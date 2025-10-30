@@ -410,10 +410,7 @@ with st.sidebar:
         try:
             with open(DEFAULTS_PATH, "w", encoding="utf-8") as f:
                 json.dump(defaults_to_save, f, indent=2)
-                # ── ADD THESE TWO LINES (keep them between json.dump(...) and st.success(...)) ──
-            DEFAULTS["consecutive_deficit_years"] = int(consecutive_deficit_years_seed)
-            st.session_state["consecutive_deficit_years"] = int(consecutive_deficit_years_seed)
-                # ────────────────────────────────────────────────────────────────────────────────
+            
             st.success("Defaults saved.")
         except Exception as e:
             st.error(f"Could not save defaults: {e}")

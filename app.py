@@ -255,7 +255,7 @@ def float_text_input_signed(label: str, default_val: float, key: str) -> float:
     return parse_us_any(st.session_state[key], default=default_val)
 # --- Proprietary trial notices (access-only) ---------------------------------
 def show_trial_header(owner_name: str, contact_email: str, version: str, date_str: str) -> None:
-    st.info("Public trial — non-production. Results are informational; no warranty.", icon="ℹ️")
+    
     with st.expander("About, Terms & Privacy"):
         st.markdown(f"""
 **About.** FuelEU Maritime calculator & optimizer (public trial).  
@@ -1280,5 +1280,6 @@ st.dataframe(
     column_order=[c for c in df_fmt.columns if c != "Reduction_%"]
 )
 st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_csv(index=False), file_name="fueleu_results_2025_2050_eur.csv", mime="text/csv")
+st.info("Public trial — non-production. Results are informational; no warranty.", icon="ℹ️")
 show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")
 

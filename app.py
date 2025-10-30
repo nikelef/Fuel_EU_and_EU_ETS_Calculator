@@ -375,7 +375,7 @@ shared_creds_cookie_gate()
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
-st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost")
+st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost - Bunker Optmizer")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 with st.expander("Methodology & Units", expanded=False):

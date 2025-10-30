@@ -397,56 +397,58 @@ st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost  — Bunk
 #show_trial_header("Nikitas Eleftheriou", "ops@example.com", "1.0", "2025-10-30")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Drop-in replacement for the "Methodology & Units" expander (proper math)
+# ──────────────────────────────────────────────────────────────────────────────
 with st.expander("Methodology & Units", expanded=False):
     st.markdown("""
 - **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
-- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **OFF**) or a 50% pool filled by ascending WtW across **all** fuels (prioritized **ON**).
+- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ);
+  Cross-border = 50% each fuel (prioritized allocation **OFF**) or a 50% pool filled by ascending WtW across **all** fuels (prioritized allocation **ON**).
 - **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.
 """)
 
-    # — Attained intensity —
-    st.markdown("**Attained intensity (year \\(y\\))**")
-    st.latex(r"""
-g_{\text{att}}(y)
-= \frac{\displaystyle \sum_{f \in \{\text{HSFO,LFO,MGO,BIO,RFNBO}\}} E^{\text{scope}}_{f}\, I_{f}}
-       {E^{\text{scope}}_{\text{total}} + \big(r(y)-1\big)\,E^{\text{scope}}_{\text{RFNBO}}}
-""")
-    st.markdown(r"""
-where \(I_f\) is WtW intensity [gCO₂e/MJ], \(E^{\text{scope}}_{f}\) is in-scope energy [MJ], electricity has \(I_{\text{ELEC}}=0\), and
-\(r(y)=2\) for \(y\le 2033\) (RFNBO reward), otherwise \(r(y)=1\).
-""")
+    st.markdown("**Attained intensity (per year \\(y\\))**:")
+    st.latex(
+        r"I_{\text{att}}(y)=\frac{\sum_{f} I_f \, E^{\text{scope}}_{f}}{E^{\text{scope}}_{\text{total}}+(r(y)-1)\,E^{\text{scope}}_{\text{RFNBO}}}"
+    )
+    st.markdown(
+        "where $I_f$ is WtW intensity [gCO$_2$e/MJ], "
+        "$E^{\\text{scope}}_{f}$ is in-scope energy [MJ], electricity has $I_{\\text{ELEC}}=0$, and:"
+    )
+    st.latex(r"r(y)=\begin{cases}2,& y\le 2033\\[4pt]1,& y\ge 2034\end{cases}")
 
-    # — Compliance balance —
-    st.markdown("**Compliance balance (tCO₂e)**")
-    st.latex(r"""
-CB_{\text{raw}}(y)
-= \frac{\big(g_{\text{limit}}(y) - g_{\text{att}}(y)\big)\;E^{\text{scope}}_{\text{total}}}{10^{6}}
-\quad [\text{tCO}_{2}\text{e}]
-""")
-    st.latex(r"""
-CB_{\text{eff}}(y) = CB_{\text{raw}}(y) + \text{CarryIn}(y), \qquad
-\text{FinalBalance}(y) = CB_{\text{eff}}(y) + \text{Pool}(y) - \text{Bank}(y)
-""")
-    st.markdown(r"""
-Caps: \(0 \le \text{Bank}(y) \le \max\{CB_{\text{eff}}(y),0\}\);
-for pooling, uptake is capped by deficit and provide is capped by surplus.
-When \(\text{FinalBalance}(y)<0\), a step-constant penalty multiplier applies (seeded by the **Consecutive deficit years**).
-""")
+    st.markdown("**Compliance balance (tCO₂e)**:")
+    st.latex(
+        r"CB_{\text{raw}}(y)=\frac{\big(I_{\text{limit}}(y)-I_{\text{att}}(y)\big)\cdot E^{\text{scope}}_{\text{total}}}{10^{6}}"
+    )
+    st.markdown("Apply carry-in, pooling (uptake + / provide −), and banking (capped by surplus):")
+    st.latex(
+        r"CB_{\text{final}}(y)=CB_{\text{raw}}(y)+\text{CarryIn}(y)+\text{Pooling}(y)-\text{Banked}(y)"
+    )
 
-    # — Optimizer —
-    st.markdown("**Optimizer (selected fossil → BIO, energy-equivalent)**")
-    st.latex(r"""
-\begin{aligned}
-&\text{Choose } x \in [0, x_{\max}] \text{ tonnes of the selected fossil to reduce (voyage first).}\\
-&\Delta m_{\text{BIO}}(x) \;=\; x \cdot \frac{\text{LCV}_{\text{fossil}}}{\text{LCV}_{\text{BIO}}}.\\[4pt]
-&\text{Objective: } C(x) \;=\; \text{Penalty}(x) \;-\; \text{Credits}(x) \;+\; \text{BIOPremium}(x) \;+\; \text{PoolingCost}(x).\\
-&x^\star \;=\; \arg\min_x \, C(x).
-\end{aligned}
-""")
-    st.markdown(r"""
-Evaluation uses the pooled allocator for cross-border segments (when toggled ON). BIO premium is \( \Delta m_{\text{BIO}}(x) \times €/\text{t} \).
-""")
+    st.markdown("**Penalty multiplier (constant within step)** — applied only if $CB_{\\text{final}}(y)<0$:")
+    st.latex(r"M_{\text{step}}=1+0.10\cdot(s-1)")
+    st.markdown("where $s$ is the **Consecutive deficit years (seed)** for that step.")
 
+    st.markdown("**Cost model (EUR)**:")
+    st.latex(
+        r"\text{NetTotalCost}(y)=\text{Penalty}(y)-\text{Credits}(y)+\text{BIO Premium}(y)+\text{Pooling Cost}(y)"
+    )
+    st.markdown(
+        "Penalty uses the €/VLSFO-eq t input converted via the attained mix (€/tCO₂e). "
+        "Credits use the €/tCO₂e input. BIO premium = BIO mass [t] × €/t. "
+        "Pooling cost = applied tCO₂e × €/tCO₂e."
+    )
+
+    st.markdown("**Optimizer (per year)**:")
+    st.latex(
+        r"\Delta m_{\text{BIO}}=x\cdot\frac{\text{LCV}_{\text{fossil}}}{\text{LCV}_{\text{BIO}}},\qquad x\in\big[0,\,m_{\text{fossil,voy}}+m_{\text{fossil,berth}}\big]"
+    )
+    st.markdown(
+        "Reduce the selected fossil by $x$ tonnes (voyage first, then berth) and increase BIO energy-equivalently. "
+        "Evaluate with the pooled allocator and search $x$ that minimizes $\\text{NetTotalCost}(y)$."
+    )
 
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""

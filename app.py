@@ -250,7 +250,7 @@ st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW �
 with st.expander("Methodology & Units", expanded=False):
     st.markdown("""
 - **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
-- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (toggle **OFF**) or a 50% pool filled by ascending WtW across **all** fuels (toggle **ON**).
+- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **ticked OFF**) or a 50% pool filled by ascending WtW across **all** fuels (priotitized allocation  **ticked ON**).
 - **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.
 - **Attained intensity:** $\sum(\text{in-scope MJ}\times\text{WtW}) \,/\, (\text{in-scope MJ} + r\cdot\text{RFNBO MJ})$; RFNBO reward $r=2$ through **2033**, then $r=1$. Electricity WtW = 0.
 - **Compliance balance:** $((\text{Limit} - \text{Attained})\cdot \text{in-scope MJ})/10^6$ → tCO₂e; then apply **carry-in**, **pooling** (+uptake/−provide, capped), and **banking** (capped by surplus).

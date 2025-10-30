@@ -388,7 +388,7 @@ with st.expander("Methodology & Units", expanded=False):
 - **Penalty multiplier:** Constant **within each step**, seeded by “Consecutive deficit years (seed)” when the year ends in deficit.
 - **Costs:** Penalty input (€/VLSFO-eq t) ↔ €/tCO₂e via the attained mix; Credits at €/tCO₂e; **BIO premium** = BIO mass [t] × €/t; **Pooling cost** = applied tCO₂e × €/tCO₂e; **Net Total Cost** = Penalty − Credits + BIO Premium + Pooling Cost.
 - **Optimizer:** Reduce selected fossil by $x$ (voyage first) and increase BIO **energy-equivalently** ($x\\cdot \\text{LCV}_\\text{fossil}/\\text{LCV}_\\text{BIO}$); evaluated with the pooled allocator; search $x$ to minimize **Net Total Cost**.
-\"\"\")
+     \"\"\")
 
 
 

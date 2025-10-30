@@ -1,24 +1,3 @@
-# app.py — FuelEU Maritime Calculator (with voyage segments, prioritized per cross-border segments, pooled final from segment sums)
-# Updates per request (2025-10-23):
-#   1) Per-segment toggle “Apply prioritized allocation” now applies to ALL fuels (RFNBO, BIO, HSFO, LFO, MGO)
-#      by ascending WtW for the two cross-border types: "EU→non-EU voyage" and "non-EU→EU voyage".
-#      For these segments:
-#         • Toggle ON  → fill the 50% in-scope POOL (half of total segment energy) by WtW priority (lowest first),
-#                        taking from each fuel up to its available energy until the pool is full.
-#         • Toggle OFF → simple 50% of each fuel (classic).
-#      Intra-EU = 100%. EU at-berth = 100% + OPS electricity (MJ) at 100% scope.
-#   2) The “Combined energy (All segments)”:
-#         • The "All energy" and "In-scope energy" stacks are computed by SUMMING the corresponding per-segment
-#           All and In-scope energies (including OPS only from EU-berth segments).
-#         • The Combined "In-scope energy" is then used to compute the FINAL attained GHG intensity (with RFNBO
-#           reward per year) and all compliance results & penalties. No separate global pooling is applied.
-#   3) All original functionality kept: banking, pooling, optimizer (note: optimizer still evaluates with a pooled
-#      allocator approximation for candidate mixes; main results/plot use the combined per-segment in-scope sums).
-#
-# Currency change (this version):
-#   • All prices, costs, and outputs are in EUR. Removed USD and FX.
-#   • Renamed *_USD columns/variables to *_EUR. Added bio_premium_eur_per_t input.
-
 from __future__ import annotations
 import json, os
 from typing import Dict, Any, Tuple, List
@@ -26,6 +5,154 @@ from typing import Dict, Any, Tuple, List
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
+# ↓↓↓ hardened shared-credentials login (cookie + session fallback)
+from datetime import datetime, timedelta, timezone
+import uuid
+import extra_streamlit_components as stx
+# ↑↑↑
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Page config FIRST
+# ──────────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="FuelEU Maritime — Voyage Segments", layout="wide")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOGIN GATE — shared username/password with cookie + session fallback
+# ──────────────────────────────────────────────────────────────────────────────
+_cookie_mgr = stx.CookieManager(key="cookie_mgr")
+
+# ensure the component is mounted once per run (prevents “button does nothing” on some setups)
+try:
+    _ = _cookie_mgr.get_all()
+except Exception:
+    pass
+
+def _get_auth_config():
+    auth = st.secrets.get("auth", {})
+    return {
+        "trial_cookie":   auth.get("trial_cookie_name", "fueleu_trial_id"),
+        "session_cookie": auth.get("session_cookie_name", "fueleu_session"),
+        "expiry_days":    int(auth.get("cookie_expiry_days", 14)),
+        "username":       auth.get("username", "temp"),
+        "password":       auth.get("password", "1234"),
+    }
+
+def _cookie_get(name: str):
+    try:
+        return _cookie_mgr.get(name)
+    except Exception:
+        return None
+
+def _cookie_set(name: str, value: str, *, expires_days: int | None = None) -> bool:
+    try:
+        if expires_days is None:
+            _cookie_mgr.set(name, value, key=f"k-{uuid.uuid4()}")
+        else:
+            _cookie_mgr.set(
+                name, value,
+                expires_at=datetime.utcnow() + timedelta(days=expires_days),
+                key=f"k-{uuid.uuid4()}",
+            )
+        return True
+    except Exception:
+        return False
+
+def _cookie_del(name: str) -> bool:
+    try:
+        _cookie_mgr.delete(name)
+        return True
+    except Exception:
+        return False
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+def shared_creds_cookie_gate():
+    """
+    • Shared username/password (from secrets or defaults).
+    • First successful login on a browser sets TRIAL cookie (14 days by default) — never deleted on Logout.
+    • SESSION cookie controls the live session; Logout deletes only SESSION (not TRIAL).
+    • Fallback: if cookies are blocked, allow login for the current tab via session_state.
+    """
+    cfg = _get_auth_config()
+    trial_ck = cfg["trial_cookie"]; sess_ck = cfg["session_cookie"]; expiry_days = cfg["expiry_days"]
+
+    # Fallback session flags (tab-local)
+    if "_fallback_logged_in" not in st.session_state:
+        st.session_state["_fallback_logged_in"] = False
+    if "_fallback_trial_until" not in st.session_state:
+        st.session_state["_fallback_trial_until"] = None
+
+    # 1) Authenticated via cookies
+    trial_tok = _cookie_get(trial_ck)
+    sess_tok  = _cookie_get(sess_ck)
+    if sess_tok and trial_tok:
+        with st.sidebar:
+            if st.button("Logout"):
+                _cookie_del(sess_ck)  # keep trial cookie (preserves countdown)
+                st.session_state["_fallback_logged_in"] = False
+                st.session_state["_fallback_trial_until"] = None
+                st.rerun()
+        return  # allow app
+
+    # 2) Session exists but trial missing → clear and force login
+    if sess_tok and not trial_tok:
+        _cookie_del(sess_ck)
+        st.session_state["_fallback_logged_in"] = False
+        st.session_state["_fallback_trial_until"] = None
+        st.rerun()
+
+    # 3) Cookie-less fallback (tab-local)
+    if st.session_state["_fallback_logged_in"]:
+        tu = st.session_state["_fallback_trial_until"]
+        if isinstance(tu, str):
+            try:
+                tu = datetime.fromisoformat(tu)
+                if tu.tzinfo is None:
+                    tu = tu.replace(tzinfo=timezone.utc)
+            except Exception:
+                tu = None
+        if tu and _now_utc() < tu:
+            with st.sidebar:
+                if st.button("Logout"):
+                    st.session_state["_fallback_logged_in"] = False
+                    st.session_state["_fallback_trial_until"] = None
+                    st.rerun()
+            return
+        else:
+            st.session_state["_fallback_logged_in"] = False
+            st.session_state["_fallback_trial_until"] = None
+
+    # 4) Login form
+    st.title("Sign in")
+    st.write("Enter the temporary credentials to access the app.")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+    submit = st.button("Sign in", type="primary")
+
+    if not submit:
+        st.stop()
+
+    # 5) Validate
+    if not ((u == cfg["username"]) and (p == cfg["password"])):  # shared creds
+        st.error("Invalid credentials.")
+        st.stop()
+
+    # 6) On success: set TRIAL (if missing) and SESSION; also set fallback for cookie-less environments
+    trial_tok = _cookie_get(trial_ck)
+    if not trial_tok:
+        _cookie_set(trial_ck, str(uuid.uuid4()), expires_days=expiry_days)
+
+    _cookie_set(sess_ck, str(uuid.uuid4()))  # session cookie (no explicit expires)
+
+    st.session_state["_fallback_logged_in"] = True
+    st.session_state["_fallback_trial_until"] = (
+        (_now_utc() + timedelta(days=expiry_days)).isoformat()
+        if not trial_tok else st.session_state.get("_fallback_trial_until")
+    )
+
+    st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants & Assumptions
@@ -241,9 +368,13 @@ def _masses_to_energies(masses: Dict[str, float], LCVs: Dict[str, float]) -> Dic
     return {f: compute_energy_MJ(masses.get(f, 0.0), LCVs.get(f, 0.0)) for f in ["HSFO","LFO","MGO","BIO","RFNBO"]}
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Gate (MUST run before any other UI beyond page_config)
+# ──────────────────────────────────────────────────────────────────────────────
+shared_creds_cookie_gate()
+
+# ──────────────────────────────────────────────────────────────────────────────
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="FuelEU Maritime — Voyage Segments", layout="wide")
 st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
@@ -258,9 +389,6 @@ with st.expander("Methodology & Units", expanded=False):
 - **Costs:** Penalty input (€/VLSFO-eq t) ↔ €/tCO₂e via the attained mix; Credits at €/tCO₂e; **BIO premium** = BIO mass [t] × €/t; **Pooling cost** = applied tCO₂e × €/tCO₂e; **Net Total Cost** = Penalty − Credits + BIO Premium + Pooling Cost.
 - **Optimizer:** Reduce selected fossil by $x$ (voyage first) and increase BIO **energy-equivalently** ($x\cdot \text{LCV}_\text{fossil}/\text{LCV}_\text{BIO}$); evaluated with the pooled allocator; search $x$ to minimize **Net Total Cost**.
 """)
-
-
-
 
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""
@@ -390,8 +518,6 @@ with st.sidebar:
         key="bio_premium_eur_per_t", min_value=0.0
     )
     st.markdown("</div>", unsafe_allow_html=True)
-
-
 
     # 5) Banking & Pooling
     st.markdown('<div class="card"><h4>Banking & Pooling (tCO₂e)</h4>', unsafe_allow_html=True)
@@ -750,7 +876,7 @@ for _, row in LIMITS_DF.iterrows():
     carry_in_list.append(carry)
     cb_eff_t.append(cb_eff)
 
-# Pooling (uptake only fills a deficit; provide only from surplus)
+    # Pooling (uptake only fills a deficit; provide only from surplus)
     if year >= int(st.session_state.get("pooling_start_year", _get(DEFAULTS,"pooling_start_year",YEARS[0]))):
        pooling_tco2e_val = parse_us_any(st.session_state.get("POOL_T", _get(DEFAULTS,"pooling_tco2e",0.0)), 0.0)
        if pooling_tco2e_val >= 0:
@@ -878,14 +1004,14 @@ def penalty_eur_with_masses_for_year(year_idx: int,
 
     if YEARS[year_idx] >= int(pooling_start_year):
         if pooling_tco2e_input >= 0:
-        # uptake: cap by current deficit (negative cb_eff_x)
-           pre_deficit_x = max(-cb_eff_x, 0.0)
-           pool_use_x = min(pooling_tco2e_input, pre_deficit_x)
+            # uptake: cap by current deficit (negative cb_eff_x)
+            pre_deficit_x = max(-cb_eff_x, 0.0)
+            pool_use_x = min(pooling_tco2e_input, pre_deficit_x)
         else:
-        # provide: cap by current surplus (positive cb_eff_x)
-           provide_abs = abs(pooling_tco2e_input)
-           pre_surplus_x = max(cb_eff_x, 0.0)
-           pool_use_x = -min(provide_abs, pre_surplus_x)
+            # provide: cap by current surplus (positive cb_eff_x)
+            provide_abs = abs(pooling_tco2e_input)
+            pre_surplus_x = max(cb_eff_x, 0.0)
+            pool_use_x = -min(provide_abs, pre_surplus_x)
     else:
         pool_use_x = 0.0
 
@@ -1068,10 +1194,6 @@ for i in range(len(YEARS)):
     bio_inc_opt = dec_opt * (LCV_SEL / LCV_BIO) if LCV_BIO > 0 else 0.0
     dec_opt_list.append(dec_opt)
     bio_inc_opt_list.append(bio_inc_opt)
-
-
-
-
 
 # Recompute optimized cost columns (EUR)
 # ---- OPTIMIZER CHANGE 3: subtract credits; pooling cost from candidate, not base

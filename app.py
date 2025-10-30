@@ -247,6 +247,21 @@ st.set_page_config(page_title="FuelEU Maritime — Voyage Segments", layout="wid
 st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
+st.markdown("""
+**Methodology & Units**
+
+- **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW intensity [gCO₂e/MJ]; Electricity conversion [kWh → MJ × 3.6]; All costs in **EUR**.
+- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (**toggle OFF**) or a 50% pool filled by ascending WtW across **all fuels** (**toggle ON**).
+- **Combined basis:** The app **sums per-segment in-scope energies** (OPS only from EU-berth) to form the combined mix; no extra global pooling for intensity.
+- **Attained intensity:** \\(\\sum\\text{(in-scope MJ × WtW)}\\) / \\(\\text{in-scope MJ} + r·\\text{RFNBO MJ}\\); with **RFNBO reward** \\(r=2\\) through **2033**, then \\(r=1\\). Electricity WtW = 0.
+- **Compliance balance:** \\((\\text{Limit} − \\text{Attained}) · \\text{in-scope MJ})/10^6\\) → tCO₂e; apply **carry-in**, then **pooling** (+uptake/−provide, capped), then **banking** (capped by surplus). Penalty multiplier is **constant within each step**, seeded by *Consecutive deficit years (seed)*.
+- **Costs:** Penalty input (€/VLSFO-eq t) converts to €/tCO₂e via the attained mix; credits at €/tCO₂e; **BIO premium** = BIO mass [t] × €/t; **Pooling cost** = applied tCO₂e × €/tCO₂e; **Net Total Cost** = Penalty − Credits + BIO Premium + Pooling Cost.
+- **Optimizer:** Reduces selected fossil by *x* (voyage first) and increases BIO **energy-equivalently** (*x·LCV_fossil/LCV_BIO*); evaluated with the pooled allocator; searches *x* to minimize **Net Total Cost**.
+""")
+
+
+
+
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""
 <style>

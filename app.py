@@ -253,6 +253,24 @@ def float_text_input_signed(label: str, default_val: float, key: str) -> float:
         st.session_state[key] = us2(val)
     st.text_input(label, value=st.session_state[key], key=key, on_change=_normalize, label_visibility="visible")
     return parse_us_any(st.session_state[key], default=default_val)
+# --- Proprietary trial notices (access-only) ---------------------------------
+def show_trial_header(owner_name: str, contact_email: str, version: str, date_str: str) -> None:
+    st.info("Public trial — non-production. Results are informational; no warranty.", icon="ℹ️")
+    with st.expander("About, Terms & Privacy"):
+        st.markdown(f"""
+**About.** FuelEU Maritime calculator & optimizer (public trial).  
+**Status.** Non-production demo for evaluation only (temporary credentials).  
+**Ownership.** © {date_str.split('-')[0]} {owner_name}. All rights reserved. Access only — code not distributed.  
+**No warranty.** Provided “as is”; results may contain errors.  
+**No advice.** Not legal, regulatory, or financial advice.  
+**Privacy.** No personal data is stored; minimal anonymous usage logs may be kept for reliability.  
+**Contact.** {contact_email}  
+**Third-party.** Built with Streamlit and open-source libraries. Trademarks belong to their owners.
+""")
+
+def show_trial_footer(owner_name: str, version: str, date_str: str) -> None:
+    st.caption(f"© {date_str.split('-')[0]} {owner_name}. All rights reserved. v{version} ({date_str})")
+# -----------------------------------------------------------------------------
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Allocators
@@ -376,6 +394,7 @@ shared_creds_cookie_gate()
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
 st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost - Bunker Optmizer")
+show_trial_header("Nikitas Eleftheriou", "ops@example.com", "1.0", "2025-10-30")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 with st.expander("Methodology & Units", expanded=False):

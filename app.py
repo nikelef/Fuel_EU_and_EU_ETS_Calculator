@@ -379,7 +379,8 @@ st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 with st.expander("Methodology & Units", expanded=False):
-    st.markdown(\"\"\"
+    st.markdown(
+        """
 - **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
 - **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **ticked OFF**) or a 50% pool filled by ascending WtW across **all** fuels (priotitized allocation  **ticked ON**).
 - **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.
@@ -388,12 +389,29 @@ with st.expander("Methodology & Units", expanded=False):
 - **Penalty multiplier:** Constant **within each step**, seeded by “Consecutive deficit years (seed)” when the year ends in deficit.
 - **Costs:** Penalty input (€/VLSFO-eq t) ↔ €/tCO₂e via the attained mix; Credits at €/tCO₂e; **BIO premium** = BIO mass [t] × €/t; **Pooling cost** = applied tCO₂e × €/tCO₂e; **Net Total Cost** = Penalty − Credits + BIO Premium + Pooling Cost.
 - **Optimizer:** Reduce selected fossil by $x$ (voyage first) and increase BIO **energy-equivalently** ($x\\cdot \\text{LCV}_\\text{fossil}/\\text{LCV}_\\text{BIO}$); evaluated with the pooled allocator; search $x$ to minimize **Net Total Cost**.
-\"\"\")
-
-
+        """
+    )
 
 # Sidebar CSS (compact), top metric smaller value text
-st.markdown(\"\"\"\n<style>\nsection[data-testid=\"stSidebar\"] div.block-container{ padding-top:.6rem; padding-bottom:.6rem; }\nsection[data-testid=\"stSidebar\"] [data-testid=\"stVerticalBlock\"]{ gap:.6rem; }\nsection[data-testid=\"stSidebar\"] label{ font-size:.95rem; margin-bottom:.2rem; font-weight:600; }\nsection[data-testid=\"stSidebar\"] input[type=\"text\"], section[data-testid=\"stSidebar\"] input[type=\"number\"]{ height:2.0rem; min-height:2.0rem; padding:.32rem .55rem; }\n.card{ padding:.65rem .75rem; border:1px solid #e5e7eb; border-radius:.6rem; background:#fbfbfb; }\n.card h4{ margin:.15rem 0 .4rem 0; font-size:1.0rem; font-weight:800; }\n.card .help{ font-size:.86rem; color:#6b7280; margin-top:.1rem; }\nhr{ border:none; border-top:1px solid #e5e7eb; margin:.4rem 0; }\n[data-testid=\"stMetricLabel\"] { font-size: .95rem !important; font-weight: 800 !important; }\n[data-testid=\"stMetricValue\"] { font-size: .80rem !important; font-weight: 700 !important; line-height: 1.05 !important; }\n[data-testid=\"stDataFrame\"] div[role=\"columnheader\"],[data-testid=\"stDataFrame\"] div[role=\"gridcell\"]{ padding:2px 6px !important; }\n[data-testid=\"stDataFrame\"] { font-size: 0.85rem !important; }\n</style>\n\"\"\", unsafe_allow_html=True)
+st.markdown(
+    """
+<style>
+section[data-testid="stSidebar"] div.block-container{ padding-top:.6rem; padding-bottom:.6rem; }
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ gap:.6rem; }
+section[data-testid="stSidebar"] label{ font-size:.95rem; margin-bottom:.2rem; font-weight:600; }
+section[data-testid="stSidebar"] input[type="text"], section[data-testid="stSidebar"] input[type="number"]{ height:2.0rem; min-height:2.0rem; padding:.32rem .55rem; }
+.card{ padding:.65rem .75rem; border:1px solid #e5e7eb; border-radius:.6rem; background:#fbfbfb; }
+.card h4{ margin:.15rem 0 .4rem 0; font-size:1.0rem; font-weight:800; }
+.card .help{ font-size:.86rem; color:#6b7280; margin-top:.1rem; }
+hr{ border:none; border-top:1px solid #e5e7eb; margin:.4rem 0; }
+[data-testid="stMetricLabel"] { font-size: .95rem !important; font-weight: 800 !important; }
+[data-testid="stMetricValue"] { font-size: .80rem !important; font-weight: 700 !important; line-height: 1.05 !important; }
+[data-testid="stDataFrame"] div[role="columnheader"],[data-testid="stDataFrame"] div[role="gridcell"]{ padding:2px 6px !important; }
+[data-testid="stDataFrame"] { font-size: 0.85rem !important; }
+</style>
+    """
+    , unsafe_allow_html=True
+)
 
 with st.sidebar:
     _ensure_segments_state()

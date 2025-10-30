@@ -379,7 +379,7 @@ st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 with st.expander("Methodology & Units", expanded=False):
-    st.markdown(\"\"\"
+     st.markdown(\"\"\"
 - **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
 - **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **ticked OFF**) or a 50% pool filled by ascending WtW across **all** fuels (priotitized allocation  **ticked ON**).
 - **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.

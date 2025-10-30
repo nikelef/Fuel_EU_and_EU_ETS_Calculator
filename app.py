@@ -341,7 +341,13 @@ with st.sidebar:
 
     # 4) Other + Optimizer
     st.markdown('<div class="card"><h4>Other settings</h4>', unsafe_allow_html=True)
-    consecutive_deficit_years_seed = int(st.number_input("Consecutive deficit years (seed)", min_value=1, value=int(_get(DEFAULTS, "consecutive_deficit_years", 1)), step=1))
+    consecutive_deficit_years_seed = int(st.number_input(
+    "Consecutive deficit years (seed)",
+    min_value=1,
+    value=int(_get(DEFAULTS, "consecutive_deficit_years", 1)),
+    step=1,
+    key="consecutive_deficit_years"  # ← makes the live value available in session_state
+    ))
     opt_fuels = ["HSFO", "LFO", "MGO"]
     try:
         _idx = opt_fuels.index(_get(DEFAULTS, "opt_reduce_fuel", "HSFO"))
@@ -764,11 +770,11 @@ for _, row in LIMITS_DF.iterrows():
 
     # Constant within step multiplier
     if final_bal < 0:
-        step_idx = _step_of_year(year)
-        if step_idx not in fixed_multiplier_by_step:
-            seed = max(int(st.session_state.get("consecutive_deficit_years", _get(DEFAULTS,"consecutive_deficit_years",1))), 1)
-            fixed_multiplier_by_step[step_idx] = 1.0 + (seed - 1) * 0.10
-        mult = fixed_multiplier_by_step[step_idx]
+       step_idx = _step_of_year(year)
+       if step_idx not in fixed_multiplier_by_step:
+       seed = max(int(consecutive_deficit_years_seed), 1)  # ← use the live widget value
+       fixed_multiplier_by_step[step_idx] = 1.0 + (seed - 1) * 0.10
+       mult = fixed_multiplier_by_step[step_idx]
     else:
         mult = 1.0
 

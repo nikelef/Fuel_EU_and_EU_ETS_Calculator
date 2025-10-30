@@ -400,14 +400,53 @@ st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW �
 with st.expander("Methodology & Units", expanded=False):
     st.markdown("""
 - **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
-- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **ticked OFF**) or a 50% pool filled by ascending WtW across **all** fuels (priotitized allocation  **ticked ON**).
+- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ); Cross-border = 50% each fuel (prioritized allocation **OFF**) or a 50% pool filled by ascending WtW across **all** fuels (prioritized **ON**).
 - **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.
-- **Attained intensity:** $\sum(\text{in-scope MJ}\times\text{WtW}) \,/\, (\text{in-scope MJ} + r\cdot\text{RFNBO MJ})$; RFNBO reward $r=2$ through **2033**, then $r=1$. Electricity WtW = 0.
-- **Compliance balance:** $((\text{Limit} - \text{Attained})\cdot \text{in-scope MJ})/10^6$ → tCO₂e; then apply **carry-in**, **pooling** (+uptake/−provide, capped), and **banking** (capped by surplus).
-- **Penalty multiplier:** Constant **within each step**, seeded by “Consecutive deficit years (seed)” when the year ends in deficit.
-- **Costs:** Penalty input (€/VLSFO-eq t) ↔ €/tCO₂e via the attained mix; Credits at €/tCO₂e; **BIO premium** = BIO mass [t] × €/t; **Pooling cost** = applied tCO₂e × €/tCO₂e; **Net Total Cost** = Penalty − Credits + BIO Premium + Pooling Cost.
-- **Optimizer:** Reduce selected fossil by $x$ (voyage first) and increase BIO **energy-equivalently** ($x\cdot \text{LCV}_\text{fossil}/\text{LCV}_\text{BIO}$); evaluated with the pooled allocator; search $x$ to minimize **Net Total Cost**.
 """)
+
+    # — Attained intensity —
+    st.markdown("**Attained intensity (year \\(y\\))**")
+    st.latex(r"""
+g_{\text{att}}(y)
+= \frac{\displaystyle \sum_{f \in \{\text{HSFO,LFO,MGO,BIO,RFNBO}\}} E^{\text{scope}}_{f}\, I_{f}}
+       {E^{\text{scope}}_{\text{total}} + \big(r(y)-1\big)\,E^{\text{scope}}_{\text{RFNBO}}}
+""")
+    st.markdown(r"""
+where \(I_f\) is WtW intensity [gCO₂e/MJ], \(E^{\text{scope}}_{f}\) is in-scope energy [MJ], electricity has \(I_{\text{ELEC}}=0\), and
+\(r(y)=2\) for \(y\le 2033\) (RFNBO reward), otherwise \(r(y)=1\).
+""")
+
+    # — Compliance balance —
+    st.markdown("**Compliance balance (tCO₂e)**")
+    st.latex(r"""
+CB_{\text{raw}}(y)
+= \frac{\big(g_{\text{limit}}(y) - g_{\text{att}}(y)\big)\;E^{\text{scope}}_{\text{total}}}{10^{6}}
+\quad [\text{tCO}_{2}\text{e}]
+""")
+    st.latex(r"""
+CB_{\text{eff}}(y) = CB_{\text{raw}}(y) + \text{CarryIn}(y), \qquad
+\text{FinalBalance}(y) = CB_{\text{eff}}(y) + \text{Pool}(y) - \text{Bank}(y)
+""")
+    st.markdown(r"""
+Caps: \(0 \le \text{Bank}(y) \le \max\{CB_{\text{eff}}(y),0\}\);
+for pooling, uptake is capped by deficit and provide is capped by surplus.
+When \(\text{FinalBalance}(y)<0\), a step-constant penalty multiplier applies (seeded by the **Consecutive deficit years**).
+""")
+
+    # — Optimizer —
+    st.markdown("**Optimizer (selected fossil → BIO, energy-equivalent)**")
+    st.latex(r"""
+\begin{aligned}
+&\text{Choose } x \in [0, x_{\max}] \text{ tonnes of the selected fossil to reduce (voyage first).}\\
+&\Delta m_{\text{BIO}}(x) \;=\; x \cdot \frac{\text{LCV}_{\text{fossil}}}{\text{LCV}_{\text{BIO}}}.\\[4pt]
+&\text{Objective: } C(x) \;=\; \text{Penalty}(x) \;-\; \text{Credits}(x) \;+\; \text{BIOPremium}(x) \;+\; \text{PoolingCost}(x).\\
+&x^\star \;=\; \arg\min_x \, C(x).
+\end{aligned}
+""")
+    st.markdown(r"""
+Evaluation uses the pooled allocator for cross-border segments (when toggled ON). BIO premium is \( \Delta m_{\text{BIO}}(x) \times €/\text{t} \).
+""")
+
 
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""

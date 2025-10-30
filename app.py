@@ -772,8 +772,8 @@ for _, row in LIMITS_DF.iterrows():
     if final_bal < 0:
        step_idx = _step_of_year(year)
        if step_idx not in fixed_multiplier_by_step:
-       seed = max(int(consecutive_deficit_years_seed), 1)  # ← use the live widget value
-       fixed_multiplier_by_step[step_idx] = 1.0 + (seed - 1) * 0.10
+          seed = max(int(consecutive_deficit_years_seed), 1)  # ← use the live widget value
+          fixed_multiplier_by_step[step_idx] = 1.0 + (seed - 1) * 0.10
        mult = fixed_multiplier_by_step[step_idx]
     else:
         mult = 1.0

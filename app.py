@@ -1321,7 +1321,7 @@ st.dataframe(
     column_order=[c for c in df_fmt.columns if c != "Reduction_%"]
 )
 st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_csv(index=False), file_name="fueleu_results_2025_2050_eur.csv", mime="text/csv")
-st.info("Public trial — non-production. Results are informational; no warranty.", icon="ℹ️")
+st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")
 show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")
 st.caption("Built with Streamlit • Hosting on Streamlit Community Cloud. By using this app you also accept Streamlit’s Terms and Privacy.")
 

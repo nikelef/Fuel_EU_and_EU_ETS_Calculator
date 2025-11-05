@@ -508,7 +508,7 @@ section[data-testid="stSidebar"] .card{
     background:#fbfbfb;
 }
 section[data-testid="stSidebar"] .card h4{
-    margin:.15rem 0 .75rem 0;  /* was .4rem → more space before first input */
+    margin:.15rem 0 1.10rem 0;  /* was .4rem → more space before first input */
     font-size:1.0rem;
     font-weight:800;
 }
@@ -516,7 +516,7 @@ section[data-testid="stSidebar"] .card .help{
     font-size:.86rem;
     color:#6b7280;
     margin-top:.15rem;
-    margin-bottom:.65rem;      /* NEW: pushes "+ Add segment" etc. further down */
+    margin-bottom:1.00rem;      /* NEW: pushes "+ Add segment" etc. further down */
 }
 
 /* Tables & metrics */

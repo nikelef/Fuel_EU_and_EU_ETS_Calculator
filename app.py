@@ -515,7 +515,7 @@ section[data-testid="stSidebar"] .card h4{
 section[data-testid="stSidebar"] .card .help{
     font-size:.86rem;
     color:#6b7280;
-    margin-top:.15rem;
+    margin-top:.20rem;
     margin-bottom:1.00rem;      /* NEW: pushes "+ Add segment" etc. further down */
 }
 

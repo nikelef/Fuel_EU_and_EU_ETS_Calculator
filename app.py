@@ -480,20 +480,70 @@ with st.expander("Methodology & Units", expanded=False):
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""
 <style>
-section[data-testid="stSidebar"] div.block-container{ padding-top:.6rem; padding-bottom:.6rem; }
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ gap:.6rem; }
-section[data-testid="stSidebar"] label{ font-size:.95rem; margin-bottom:.2rem; font-weight:600; }
-section[data-testid="stSidebar"] input[type="text"], section[data-testid="stSidebar"] input[type="number"]{ height:2.0rem; min-height:2.0rem; padding:.32rem .55rem; }
-.card{ padding:.65rem .75rem; border:1px solid #e5e7eb; border-radius:.6rem; background:#fbfbfb; }
-.card h4{ margin:.15rem 0 .4rem 0; font-size:1.0rem; font-weight:800; }
-.card .help{ font-size:.86rem; color:#6b7280; margin-top:.1rem; }
-hr{ border:none; border-top:1px solid #e5e7eb; margin:.4rem 0; }
-[data-testid="stMetricLabel"] { font-size: .95rem !important; font-weight: 800 !important; }
-[data-testid="stMetricValue"] { font-size: .80rem !important; font-weight: 700 !important; line-height: 1.05 !important; }
-[data-testid="stDataFrame"] div[role="columnheader"],[data-testid="stDataFrame"] div[role="gridcell"]{ padding:2px 6px !important; }
-[data-testid="stDataFrame"] { font-size: 0.85rem !important; }
+/* Sidebar container & general spacing */
+section[data-testid="stSidebar"] div.block-container{
+    padding-top:.6rem;
+    padding-bottom:.6rem;
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
+    gap:.8rem;  /* was .6rem → a bit more breathing space between blocks */
+}
+section[data-testid="stSidebar"] label{
+    font-size:.95rem;
+    margin-bottom:.2rem;
+    font-weight:600;
+}
+section[data-testid="stSidebar"] input[type="text"],
+section[data-testid="stSidebar"] input[type="number"]{
+    height:2.0rem;
+    min-height:2.0rem;
+    padding:.32rem .55rem;
+}
+
+/* Cards ("bubbles") in the sidebar */
+section[data-testid="stSidebar"] .card{
+    padding:.65rem .75rem;
+    border:1px solid #e5e7eb;
+    border-radius:.6rem;
+    background:#fbfbfb;
+}
+section[data-testid="stSidebar"] .card h4{
+    margin:.15rem 0 .75rem 0;  /* was .4rem → more space before first input */
+    font-size:1.0rem;
+    font-weight:800;
+}
+section[data-testid="stSidebar"] .card .help{
+    font-size:.86rem;
+    color:#6b7280;
+    margin-top:.15rem;
+    margin-bottom:.65rem;      /* NEW: pushes "+ Add segment" etc. further down */
+}
+
+/* Tables & metrics */
+hr{
+    border:none;
+    border-top:1px solid #e5e7eb;
+    margin:.4rem 0;
+}
+[data-testid="stMetricLabel"]{
+    font-size:.95rem !important;
+    font-weight:800 !important;
+}
+[data-testid="stMetricValue"]{
+    font-size:.80rem !important;
+    font-weight:700 !important;
+    line-height:1.05 !important;
+}
+[data-testid="stDataFrame"] div[role="columnheader"],
+[data-testid="stDataFrame"] div[role="gridcell"]{
+    padding:2px 6px !important;
+}
+[data-testid="stDataFrame"]{
+    font-size:0.85rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 with st.sidebar:
     _ensure_segments_state()

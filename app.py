@@ -575,8 +575,19 @@ with st.sidebar:
                 seg["BIO_t"]   = float_text_input("BIO [t]"  , seg.get("BIO_t",  0.0), key=f"seg_bio_{i}",   min_value=0.0)
             # OPS appears only for EU at-berth
             if seg["type"] == "EU at-berth (port stay)":
-                seg["OPS_kWh"] = float_text_input("EU OPS electricity (kWh)", seg.get("OPS_kWh", 0.0), key=f"seg_ops_{i}", min_value=0.0)
-                st.text_input("Electricity (MJ) (derived)", value=us2(seg["OPS_kWh"]*3.6), disabled=True)
+                seg["OPS_KWh"] = float_text_input(
+                    "EU OPS electricity (kWh)",
+                    seg.get("OPS_KWh", 0.0),
+                    key=f"seg_ops_{i}",
+                    min_value=0.0
+                )
+                st.text_input(
+                    "Electricity (MJ) (derived)",
+                    value=us2(seg["OPS_kWh"] * 3.6),
+                    disabled=True,
+                    key=f"seg_ops_mj_{i}",
+                )
+
             if st.button("Remove this segment", key=f"seg_remove_{i}"):
                 to_remove.append(i)
     if to_remove:

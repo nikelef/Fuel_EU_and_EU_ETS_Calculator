@@ -1344,33 +1344,19 @@ for i in range(len(YEARS)):
     bio_inc_opt_list.append(bio_inc_opt)
 
 # Recompute optimized cost columns (EUR)
-# Recompute optimized cost columns (EUR)
 # ---- OPTIMIZER CHANGE 3: subtract credits; pooling cost from candidate, not base
 penalties_eur_opt_col, bio_premium_cost_eur_opt_col, total_cost_eur_opt_col = [], [], []
-
-# NEW: store optimized final balance (tCO2e) for compliance delta
-final_balance_t_opt_col = []  # NEW
-
 for i in range(len(YEARS)):
     x_opt = dec_opt_list[i]
     if x_opt <= 0.0 or LCV_BIO <= 0.0:
-        # No optimization applied → use base-year values
         penalties_eur_opt = penalties_eur[i]
         bio_premium_eur_opt = bio_premium_cost_eur_col[i]
         credits_eur_opt = credits_eur[i]
         pooling_cost_eur_opt = pooling_cost_eur_col[i]
-
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
-        total_cost_eur_opt_col.append(
-            penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt
-        )
-
-        # NEW: optimized balance = base final balance when no extra BIO is applied
-        final_balance_t_opt_col.append(final_balance_t[i])  # NEW
-
+        total_cost_eur_opt_col.append(penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt)
     else:
-        # Optimization applied → recompute penalties, credits, pooling, and final balance for candidate
         masses_opt = masses_after_shift_generic(selected_fuel_for_opt, x_opt)
         penalties_eur_opt, _, final_bal_x, pool_use_x = penalty_eur_with_masses_for_year(i, *masses_opt)
         new_bio_total_t_opt = (masses_opt[3] + masses_opt[8])
@@ -1380,24 +1366,7 @@ for i in range(len(YEARS)):
 
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
-        total_cost_eur_opt_col.append(
-            penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt
-        )
-
-        # NEW: store the optimized final balance
-        final_balance_t_opt_col.append(final_bal_x)  # NEW
-
-# NEW BLOCK: BIO compliance cost per tCO2e (optimized vs base)
-bio_compliance_cost_eur_per_tco2e = []  # NEW
-for i in range(len(YEARS)):             # NEW
-    delta_cost = total_cost_eur_opt_col[i] - net_total_cost_eur_col[i]    # NEW
-    delta_balance = final_balance_t_opt_col[i] - final_balance_t[i]       # NEW
-
-    # Only meaningful if BIO improves the compliance balance (ΔBalance > 0)     # NEW
-    if delta_balance > 0:                                                   # NEW
-        bio_compliance_cost_eur_per_tco2e.append(delta_cost / delta_balance)  # NEW
-    else:                                                                   # NEW
-        bio_compliance_cost_eur_per_tco2e.append(float("nan"))              # NEW
+        total_cost_eur_opt_col.append(penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Table
@@ -1428,9 +1397,6 @@ df_cost = pd.DataFrame({
     decrease_col_name: dec_opt_list,
     "BIO_Increase(t)_For_Opt_Cost": bio_inc_opt_list,
     "Total_Cost_EUR_Opt": total_cost_eur_opt_col,
-
-    # NEW: cost of FuelEU compliance via additional BIO [EUR/tCO2e]
-    "BIO_Compliance_Cost_EUR_per_tCO2e": bio_compliance_cost_eur_per_tco2e,
 })
 
 df_fmt = df_cost.copy()
@@ -1446,5 +1412,3 @@ st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_c
 st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")
 show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")
 st.caption("Built with Streamlit • Hosting on Streamlit Community Cloud. By using this app you also accept Streamlit’s Terms and Privacy.")
-
-

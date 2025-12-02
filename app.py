@@ -608,7 +608,7 @@ with st.sidebar:
         LCV_MGO   = float_text_input("MGO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_MGO"  , 42_700.0), key="LCV_MGO",   min_value=0.0)
     lcv_c4, lcv_c5 = st.columns(2)
     with lcv_c4:
-        LCV_BIO   = float_text_input("BIO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_BIO"  , 38_000.0), key="LCV_BIO",   min_value=0.0)
+        LCV_BIO   = float_text_input("BIO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_BIO"  , 39_800.0), key="LCV_BIO",   min_value=0.0)
     with lcv_c5:
        LCV_RFNBO = float_text_input("RFNBO LCV [MJ/t]", _get(DEFAULTS, "LCV_RFNBO", 30_000.0), key="LCV_RFNBO", min_value=0.0)
 
@@ -625,7 +625,7 @@ with st.sidebar:
        WtW_MGO   = float_text_input("MGO WtW"  , _get(DEFAULTS, "WtW_MGO"  , 90.77),  key="WtW_MGO",   min_value=0.0)
     wtw_c4, wtw_c5 = st.columns(2)
     with wtw_c4:
-       WtW_BIO   = float_text_input("BIO WtW"  , _get(DEFAULTS, "WtW_BIO"  , 70.00),  key="WtW_BIO",   min_value=0.0)
+       WtW_BIO   = float_text_input("BIO WtW"  , _get(DEFAULTS, "WtW_BIO"  , 70.37),  key="WtW_BIO",   min_value=0.0)
     with wtw_c5:
        WtW_RFNBO = float_text_input("RFNBO WtW", _get(DEFAULTS, "WtW_RFNBO", 20.00),  key="WtW_RFNBO", min_value=0.0)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -713,12 +713,12 @@ with st.sidebar:
 LCV_HSFO = parse_us_any(st.session_state.get("LCV_HSFO", _get(DEFAULTS,"LCV_HSFO",40200.0)), 40200.0) 
 LCV_LFO  = parse_us_any(st.session_state.get("LCV_LFO" , _get(DEFAULTS,"LCV_LFO" ,41000.0)), 41000.0)
 LCV_MGO  = parse_us_any(st.session_state.get("LCV_MGO" , _get(DEFAULTS,"LCV_MGO" ,42700.0)), 42700.0)
-LCV_BIO  = parse_us_any(st.session_state.get("LCV_BIO" , _get(DEFAULTS,"LCV_BIO" ,38000.0)), 38000.0)
+LCV_BIO  = parse_us_any(st.session_state.get("LCV_BIO" , _get(DEFAULTS,"LCV_BIO" ,39800.0)), 39800.0)
 LCV_RFNBO= parse_us_any(st.session_state.get("LCV_RFNBO", _get(DEFAULTS,"LCV_RFNBO",30000.0)),30000.0)
 WtW_HSFO = parse_us_any(st.session_state.get("WtW_HSFO", _get(DEFAULTS,"WtW_HSFO",91.74)), 91.74)
 WtW_LFO  = parse_us_any(st.session_state.get("WtW_LFO" , _get(DEFAULTS,"WtW_LFO" ,91.39)), 91.39)
 WtW_MGO  = parse_us_any(st.session_state.get("WtW_MGO" , _get(DEFAULTS,"WtW_MGO" ,90.77)), 90.77)
-WtW_BIO  = parse_us_any(st.session_state.get("WtW_BIO" , _get(DEFAULTS,"WtW_BIO" ,70.00)), 70.00)
+WtW_BIO  = parse_us_any(st.session_state.get("WtW_BIO" , _get(DEFAULTS,"WtW_BIO" ,70.37)), 70.37)
 WtW_RFNBO= parse_us_any(st.session_state.get("WtW_RFNBO", _get(DEFAULTS,"WtW_RFNBO",20.00)), 20.00)
 wtw = {"HSFO": WtW_HSFO, "LFO": WtW_LFO, "MGO": WtW_MGO, "BIO": WtW_BIO, "RFNBO": WtW_RFNBO, "ELEC": 0.0}
 LCVs_now = {"HSFO": LCV_HSFO, "LFO": LCV_LFO, "MGO": LCV_MGO, "BIO": LCV_BIO, "RFNBO": LCV_RFNBO}

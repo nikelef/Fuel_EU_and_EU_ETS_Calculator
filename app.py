@@ -1394,58 +1394,25 @@ for i in range(len(YEARS)):
         continue
 
     def _total_cost_for_x(x: float) -> float:
-        # 1) masses after shifting selected fossil → BIO (energy-equivalent)
-        masses = masses_after_shift_generic(selected_fuel_for_opt, x)
-
-        # 2) compute scope, numerators (same as helper), then g_att_x
-        E_scope_x, num_phys_x, E_rfnbo_scope_x = scoped_and_intensity_from_masses(
-            *masses, ELEC_MJ, wtw, YEARS[i]
+        """
+        Objective for the optimizer: given a candidate fossil→BIO shift x [t],
+        apply it segment-wise and compute Net_Total_Cost
+        (penalty − credits + BIO premium + pooling cost)
+        using the same per-segment scope logic.
+        """
+        # 1) Apply fossil→BIO shift on a copy of the current segments
+        segments_mod, actual_dec, bio_inc_t = _apply_shift_to_segments(
+            st.session_state["abs_segments"],
+            selected_fuel_for_opt,
+            x
         )
-        if E_scope_x <= 0:
-            return 0.0  # no energy → no cost
 
-        r = 2.0 if YEARS[i] <= 2033 else 1.0
-        den_rwd_x = E_scope_x + (r - 1.0) * E_rfnbo_scope_x
-        g_att_x = (num_phys_x / den_rwd_x) if den_rwd_x > 0 else 0.0
+        # 2) Compute attained intensity and final balance for this candidate
+        g_att_x, E_scope_x, final_bal_x, pool_use_x = _scope_and_balance_from_segments(i, segments_mod)
+        if E_scope_x <= 0.0:
+            return 0.0  # no in-scope energy → no cost
 
-        # 3) compliance balance for this candidate
-        g_target = LIMITS_DF["Limit_gCO2e_per_MJ"].iloc[i]
-        CB_g_x = (g_target - g_att_x) * E_scope_x
-        CB_t_raw_x = CB_g_x / 1e6
-        cb_eff_x = CB_t_raw_x + carry_in_list[i]
-
-        # 4) pooling (cap: uptake by deficit, provide by surplus)
-        if YEARS[i] >= int(pooling_start_year):
-            if pooling_tco2e_input >= 0:
-                pre_deficit_x = max(-cb_eff_x, 0.0)
-                pool_use_x = min(pooling_tco2e_input, pre_deficit_x)
-            else:
-                provide_abs = abs(pooling_tco2e_input)
-                pre_surplus_x = max(cb_eff_x, 0.0)
-                pool_use_x = -min(provide_abs, pre_surplus_x)
-        else:
-            pool_use_x = 0.0
-
-        # 5) banking (cap by current surplus)
-        if YEARS[i] >= int(banking_start_year):
-            pre_surplus = max(cb_eff_x, 0.0)
-            requested_bank = max(banking_tco2e_input, 0.0)
-            bank_use_x = min(requested_bank, pre_surplus)
-        else:
-            bank_use_x = 0.0
-
-        # 6) safety clamp (cannot end negative if bank/provide were over-applied)
-        final_bal_x = cb_eff_x + pool_use_x - bank_use_x
-        if final_bal_x < 0:
-            needed = -final_bal_x
-            trim_bank = min(needed, bank_use_x)
-            bank_use_x -= trim_bank
-            needed -= trim_bank
-            if needed > 0 and pool_use_x < 0:
-                pool_use_x += needed
-            final_bal_x = cb_eff_x + pool_use_x - bank_use_x
-
-        # 7) penalty / credit
+        # 3) Penalty / credits
         if final_bal_x < 0:
             step_idx = _step_of_year(YEARS[i])
             start_count = max(int(consecutive_deficit_years_seed), 1)
@@ -1456,12 +1423,14 @@ for i in range(len(YEARS)):
             penalty_eur_x = 0.0
             credits_eur_x = final_bal_x * credit_per_tco2e_val_opt
 
-        # 8) pooling & bio premium costs
+        # 4) Pooling cost & BIO premium at candidate mix
         pooling_cost_x = pool_use_x * pooling_price_eur_per_tco2e_val
-        new_bio_total_t = (masses[3] + masses[8])  # b_v + b_b
+        bio_total_t_x = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_mod)
+        bio_premium_eur_x = bio_total_t_x * bio_premium_eur_per_t_val
 
-        # 9) total cost objective (match Net_Total_Cost logic)
-        return penalty_eur_x - credits_eur_x + new_bio_total_t * bio_premium_eur_per_t_val + pooling_cost_x
+        # 5) Objective: match Net_Total_Cost logic
+        return penalty_eur_x - credits_eur_x + bio_premium_eur_x + pooling_cost_x
+
 
     # A) dense coarse scan to bracket minimum
     steps_coarse = 200

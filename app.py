@@ -1485,17 +1485,39 @@ for i in range(len(YEARS)):
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
         total_cost_eur_opt_col.append(penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt)
+    
     else:
-        masses_opt = masses_after_shift_generic(selected_fuel_for_opt, x_opt)
-        penalties_eur_opt, _, final_bal_x, pool_use_x = penalty_eur_with_masses_for_year(i, *masses_opt)
-        new_bio_total_t_opt = (masses_opt[3] + masses_opt[8])
-        bio_premium_eur_opt = new_bio_total_t_opt * bio_premium_eur_per_t_val
-        credits_eur_opt = max(final_bal_x, 0.0) * credit_per_tco2e_val_opt
+        # Apply the optimal shift on a copy of the segments
+        segments_opt, actual_dec_opt, bio_inc_opt = _apply_shift_to_segments(
+            st.session_state["abs_segments"],
+            selected_fuel_for_opt,
+            x_opt
+        )
+
+        # Recompute intensity and balance for this candidate
+        g_att_opt, E_scope_opt, final_bal_x, pool_use_x = _scope_and_balance_from_segments(i, segments_opt)
+
+        # Penalty / credits at optimum
+        if final_bal_x < 0:
+            step_idx = _step_of_year(YEARS[i])
+            start_count = max(int(consecutive_deficit_years_seed), 1)
+            step_mult = 1.0 + (start_count - 1) * 0.10
+            penalties_eur_opt = euros_from_tco2e(-final_bal_x, g_att_opt, penalty_vlsfo_opt) * step_mult
+            credits_eur_opt = 0.0
+        else:
+            penalties_eur_opt = 0.0
+            credits_eur_opt = final_bal_x * credit_per_tco2e_val_opt
+
+        # Pooling cost and BIO premium at optimum
         pooling_cost_eur_opt = pool_use_x * pooling_price_eur_per_tco2e_val
+        bio_total_t_opt = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_opt)
+        bio_premium_eur_opt = bio_total_t_opt * bio_premium_eur_per_t_val
 
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
-        total_cost_eur_opt_col.append(penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt)
+        total_cost_eur_opt_col.append(
+            penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt
+        )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Table

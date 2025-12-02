@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json, os, copy
 from typing import Dict, Any, Tuple, List
-
 import pandas as pd
 
 import plotly.graph_objects as go
@@ -1099,6 +1098,166 @@ net_total_cost_eur_col = [penalties_eur[i] - credits_eur[i] + bio_premium_cost_e
 # ──────────────────────────────────────────────────────────────────────────────
 # Optimizer utilities (kept; pooled allocator approximation)
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _apply_shift_to_segments(base_segments: List[Dict[str, Any]],
+                             fuel: str,
+                             x_decrease_t: float) -> Tuple[List[Dict[str, Any]], float, float]:
+    """
+    Take a deep copy of the current segments, reduce the selected fossil fuel
+    by x tonnes (voyage first, then EU at-berth), and add BIO energy-equivalently.
+    Returns (modified_segments, actual_fossil_decrease_t, bio_increase_t).
+    """
+    segs = copy.deepcopy(base_segments)
+    x = max(0.0, float(x_decrease_t))
+
+    # total available of the selected fuel across all segments
+    total_avail = 0.0
+    for seg in segs:
+        total_avail += float(seg.get(f"{fuel}_t", 0.0) or 0.0)
+    if total_avail <= 0.0:
+        return segs, 0.0, 0.0
+
+    x = min(x, total_avail)
+    remaining = x
+
+    # 1) reduce from voyage segments (non-berth) first
+    for seg in segs:
+        if seg.get("type") == "EU at-berth (port stay)":
+            continue
+        avail = float(seg.get(f"{fuel}_t", 0.0) or 0.0)
+        if avail <= 0.0 or remaining <= 0.0:
+            continue
+        take = min(avail, remaining)
+        seg[f"{fuel}_t"] = avail - take
+        remaining -= take
+
+    # 2) then from EU-berth segments
+    for seg in segs:
+        if seg.get("type") != "EU at-berth (port stay)":
+            continue
+        avail = float(seg.get(f"{fuel}_t", 0.0) or 0.0)
+        if avail <= 0.0 or remaining <= 0.0:
+            continue
+        take = min(avail, remaining)
+        seg[f"{fuel}_t"] = avail - take
+        remaining -= take
+
+    actual_dec = x - remaining
+    if actual_dec <= 0.0 or LCV_BIO <= 0.0:
+        return segs, 0.0, 0.0
+
+    # Energy-equivalent BIO increase
+    if fuel == "HSFO":
+        LCV_SEL = LCV_HSFO
+    elif fuel == "LFO":
+        LCV_SEL = LCV_LFO
+    else:
+        LCV_SEL = LCV_MGO
+
+    bio_inc_t = actual_dec * (LCV_SEL / LCV_BIO)
+    rem_bio = bio_inc_t
+
+    # Prefer EU at-berth segments for new BIO, as in the previous lumped logic
+    berth_segments = [seg for seg in segs if seg.get("type") == "EU at-berth (port stay)"]
+    if berth_segments:
+        seg0 = berth_segments[0]
+        seg0["BIO_t"] = float(seg0.get("BIO_t", 0.0) or 0.0) + rem_bio
+        rem_bio = 0.0
+
+    # If no EU-berth segments, or any remainder, put it into the first non-berth segment
+    if rem_bio > 0.0:
+        non_berth = [seg for seg in segs if seg.get("type") != "EU at-berth (port stay)"]
+        if non_berth:
+            seg0 = non_berth[0]
+            seg0["BIO_t"] = float(seg0.get("BIO_t", 0.0) or 0.0) + rem_bio
+            rem_bio = 0.0
+
+    return segs, actual_dec, bio_inc_t
+
+
+def _scope_from_segments(segments: List[Dict[str, Any]]) -> Tuple[float, float, float]:
+    """
+    Use the same per-segment machinery as the main app to compute:
+    - E_scope_x: total in-scope energy [MJ]
+    - num_phys_x: numerator Σ(E_f_scope * WtW_f)
+    - E_rfnbo_scope_x: in-scope RFNBO energy [MJ]
+    """
+    combined_scope_x = {"ELEC": 0.0, "RFNBO": 0.0, "BIO": 0.0, "HSFO": 0.0, "LFO": 0.0, "MGO": 0.0}
+
+    for seg in segments:
+        energies_all = _segment_energy_mj(seg)
+        energies_scope, elec_mj_seg = _segment_scope_with_toggle(seg, energies_all)
+        combined_scope_x["ELEC"] += elec_mj_seg
+        for f in FUELS:
+            combined_scope_x[f] += float(energies_scope.get(f, 0.0) or 0.0)
+
+    E_scope_x = sum(combined_scope_x.values())
+    num_phys_x = sum(
+        combined_scope_x.get(k, 0.0) * wtw.get(k, 0.0)
+        for k in ["HSFO", "LFO", "MGO", "BIO", "RFNBO", "ELEC"]
+    )
+    E_rfnbo_scope_x = combined_scope_x.get("RFNBO", 0.0)
+    return E_scope_x, num_phys_x, E_rfnbo_scope_x
+
+
+def _scope_and_balance_from_segments(year_idx: int,
+                                     segments_mod: List[Dict[str, Any]]) -> Tuple[float, float, float, float]:
+    """
+    Helper for the optimizer:
+    given a modified segments list, returns
+    (g_att_x, E_scope_x, final_balance_tCO2e_x, pooling_used_tCO2e_x)
+    for the year at index year_idx, using the same pooling/banking logic
+    as the main results table.
+    """
+    year = YEARS[year_idx]
+    E_scope_x, num_phys_x, E_rfnbo_scope_x = _scope_from_segments(segments_mod)
+    if E_scope_x <= 0.0:
+        return 0.0, 0.0, 0.0, 0.0
+
+    # Rewarded denominator (RFNBO doubling until 2033)
+    r = 2.0 if year <= 2033 else 1.0
+    den_rwd_x = E_scope_x + (r - 1.0) * E_rfnbo_scope_x
+    g_att_x = (num_phys_x / den_rwd_x) if den_rwd_x > 0.0 else 0.0
+
+    # Raw & effective compliance balance
+    g_target = float(LIMITS_DF["Limit_gCO2e_per_MJ"].iloc[year_idx])
+    CB_g_x = (g_target - g_att_x) * E_scope_x
+    CB_t_raw_x = CB_g_x / 1e6
+    cb_eff_x = CB_t_raw_x + carry_in_list[year_idx]
+
+    # Pooling (same logic as in the main loop)
+    if year >= int(pooling_start_year):
+        if pooling_tco2e_input >= 0:
+            pre_deficit_x = max(-cb_eff_x, 0.0)
+            pool_use_x = min(pooling_tco2e_input, pre_deficit_x)
+        else:
+            provide_abs = abs(pooling_tco2e_input)
+            pre_surplus_x = max(cb_eff_x, 0.0)
+            pool_use_x = -min(provide_abs, pre_surplus_x)
+    else:
+        pool_use_x = 0.0
+
+    # Banking
+    if year >= int(banking_start_year):
+        pre_surplus = max(cb_eff_x, 0.0)
+        requested_bank = max(banking_tco2e_input, 0.0)
+        bank_use_x = min(requested_bank, pre_surplus)
+    else:
+        bank_use_x = 0.0
+
+    # Clamp: cannot end more negative just because we banked/provided too much
+    final_bal_x = cb_eff_x + pool_use_x - bank_use_x
+    if final_bal_x < 0.0:
+        needed = -final_bal_x
+        trim_bank = min(needed, bank_use_x)
+        bank_use_x -= trim_bank
+        needed -= trim_bank
+        if needed > 0.0 and pool_use_x < 0.0:
+            pool_use_x += needed
+        final_bal_x = cb_eff_x + pool_use_x - bank_use_x
+
+    return g_att_x, E_scope_x, final_bal_x, pool_use_x
+
 HSFO_voy_t = totals_mass["intra_voy"]["HSFO"] + totals_mass["extra_voy"]["HSFO"]
 LFO_voy_t  = totals_mass["intra_voy"]["LFO"]  + totals_mass["extra_voy"]["LFO"]
 MGO_voy_t  = totals_mass["intra_voy"]["MGO"]  + totals_mass["extra_voy"]["MGO"]

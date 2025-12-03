@@ -659,7 +659,25 @@ with st.sidebar:
         _get(DEFAULTS, "bio_premium_eur_per_t", _get(DEFAULTS, "bio_premium_usd_per_t", 0.0)),
         key="bio_premium_eur_per_t", min_value=0.0
     )
+
+    # EU ETS — EUAs price per year
+    eua_col_year, eua_col_price = st.columns([1, 1])
+    with eua_col_year:
+        eua_year_selection = st.selectbox(
+            "EUAs year",
+            options=["2025", "2026+"],
+            key="eua_year_selection"
+        )
+    with eua_col_price:
+        eua_price_eur_per_tco2e = float_text_input(
+            "EUAs EUR for year",
+            _get(DEFAULTS, "eua_price_eur_per_tco2e", 0.0),
+            key="eua_price_eur_per_tco2e",
+            min_value=0.0
+        )
+
     st.markdown("</div>", unsafe_allow_html=True)
+
 
     # 5) Banking & Pooling
     st.markdown('<div class="card"><h4>Banking & Pooling (tCO₂e)</h4>', unsafe_allow_html=True)

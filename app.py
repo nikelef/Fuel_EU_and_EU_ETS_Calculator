@@ -575,9 +575,9 @@ with st.sidebar:
                 seg["BIO_t"]   = float_text_input("BIO [t]"  , seg.get("BIO_t",  0.0), key=f"seg_bio_{i}",   min_value=0.0)
             # OPS appears only for EU at-berth
             if seg["type"] == "EU at-berth (port stay)":
-                seg["OPS_KWh"] = float_text_input(
+                seg["OPS_kWh"] = float_text_input(
                     "EU OPS electricity (kWh)",
-                    seg.get("OPS_KWh", 0.0),
+                    seg.get("OPS_kWh", 0.0),
                     key=f"seg_ops_{i}",
                     min_value=0.0
                 )

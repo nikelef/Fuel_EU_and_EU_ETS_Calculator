@@ -16,12 +16,6 @@ import extra_streamlit_components as stx
 # Page config FIRST
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="FuelEU Maritime — Voyage Segments", layout="wide")
-
-
-#******************
-
-import streamlit as st
-
 st.markdown("""
 <style>
 /* Hide the entire top-right toolbar (menu, rerun, GitHub link) */

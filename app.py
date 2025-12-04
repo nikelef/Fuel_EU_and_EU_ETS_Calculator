@@ -674,7 +674,7 @@ with st.sidebar:
 
     bio_mix_type = st.selectbox(
         "Bio Mix Type",
-        options=["BIO/HSFO mix", "BIO/LFO mix", "BIO/MGO mix"],
+        options=["BIO/HSFO mix","BIO/VLSFO mix", "BIO/LFO mix", "BIO/MGO mix"],
         index=1,
         key="bio_mix_type",
         help="Select which fossil fuel is blended with BIO. "

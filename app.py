@@ -624,14 +624,14 @@ with st.sidebar:
        WtW_RFNBO = float_text_input("RFNBO WtW", _get(DEFAULTS, "WtW_RFNBO", 20.00),  key="WtW_RFNBO", min_value=0.0)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4) Other + Optimizer
+    # 4) Other settings
     st.markdown('<div class="card"><h4>Other settings</h4>', unsafe_allow_html=True)
     consecutive_deficit_years_seed = int(st.number_input(
-    "Consecutive deficit years (seed)",
-    min_value=1,
-    value=int(_get(DEFAULTS, "consecutive_deficit_years", 1)),
-    step=1,
-    key="consecutive_deficit_years"  # ← makes the live value available in session_state
+        "Consecutive deficit years (seed)",
+        min_value=1,
+        value=int(_get(DEFAULTS, "consecutive_deficit_years", 1)),
+        step=1,
+        key="consecutive_deficit_years"
     ))
     opt_fuels = ["HSFO", "LFO", "MGO"]
     try:
@@ -639,7 +639,19 @@ with st.sidebar:
     except ValueError:
         _idx = 0
     selected_fuel_for_opt = st.selectbox("Fuel to reduce (for optimization)", opt_fuels, index=_idx)
-    st.markdown("</div>", unsafe_allow_html=True)
+
+    # NEW FIELD — ETS: Pure BIO share in blended fuel
+    pure_bio_pct = st.number_input(
+        "Pure BIO in the blend mix (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=float(_get(DEFAULTS, "pure_bio_pct", 100.0)),
+        step=1.0,
+        key="pure_bio_pct",
+        help="Percentage of pure sustainable BIO in the delivered fuel blend. "
+             "Example: B30 → enter 30; B60 → enter 60. "
+             "Used for ETS calculation of fossil share in the blend."
+    )
 
     # 3) Market prices  (ALL in EUR)
     st.markdown('<div class="card"><h4>Market prices</h4>', unsafe_allow_html=True)

@@ -713,10 +713,10 @@ with st.sidebar:
             key="eua_year_selection"
         )
     with eua_col_price:
-        eua_price_eur_per_tco2e = float_text_input(
+        eua_price_eur_per_tco2 = float_text_input(
             "EUAs EUR price for year",
-            _get(DEFAULTS, "eua_price_eur_per_tco2e", 0.0),
-            key="eua_price_eur_per_tco2e",
+            _get(DEFAULTS, "eua_price_eur_per_tco2", 0.0),
+            key="eua_price_eur_per_tco2",
             min_value=0.0
         )
 

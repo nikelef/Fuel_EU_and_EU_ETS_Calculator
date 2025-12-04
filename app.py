@@ -633,6 +633,7 @@ with st.sidebar:
         step=1,
         key="consecutive_deficit_years"
     ))
+
     opt_fuels = ["HSFO", "LFO", "MGO"]
     try:
         _idx = opt_fuels.index(_get(DEFAULTS, "opt_reduce_fuel", "HSFO"))
@@ -640,7 +641,7 @@ with st.sidebar:
         _idx = 0
     selected_fuel_for_opt = st.selectbox("Fuel to reduce (for optimization)", opt_fuels, index=_idx)
 
-    # NEW FIELD — ETS: Pure BIO share in blended fuel
+    # NEW FIELD — BIO share inside blend (for ETS fossil split)
     pure_bio_pct = st.number_input(
         "Pure BIO in the blend mix (%)",
         min_value=0.0,
@@ -651,6 +652,17 @@ with st.sidebar:
         help="Percentage of pure sustainable BIO in the delivered fuel blend. "
              "Example: B30 → enter 30; B60 → enter 60. "
              "Used for ETS calculation of fossil share in the blend."
+    )
+
+    # NEW FIELD — identify fossil base fuel inside BIO blend (for ETS CO2 factor)
+    bio_mix_type = st.selectbox(
+        "Bio Mix Type",
+        options=["BIO/HSFO mix", "BIO/LFO mix", "BIO/MGO mix"],
+        index=1,
+        key="bio_mix_type",
+        help="Select which fossil fuel is blended with BIO. "
+             "Example: if fuel is B30-LFO, choose 'BIO/LFO mix'. "
+             "Determines fossil CO₂ emissions under EU ETS."
     )
 
     # 3) Market prices  (ALL in EUR)

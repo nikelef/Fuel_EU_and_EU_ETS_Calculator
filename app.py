@@ -480,7 +480,7 @@ section[data-testid="stSidebar"] div.block-container{
     padding-bottom:.6rem;
 }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
-    gap:.8rem;  /* was .6rem → a bit more breathing space between blocks */
+    gap:.8rem;
 }
 section[data-testid="stSidebar"] label{
     font-size:.95rem;
@@ -502,7 +502,7 @@ section[data-testid="stSidebar"] .card{
     background:#fbfbfb;
 }
 section[data-testid="stSidebar"] .card h4{
-    margin:.15rem 0 1.10rem 0;  /* was .4rem → more space before first input */
+    margin:.15rem 0 1.10rem 0;
     font-size:1.0rem;
     font-weight:800;
 }
@@ -510,7 +510,7 @@ section[data-testid="stSidebar"] .card .help{
     font-size:.86rem;
     color:#6b7280;
     margin-top:.20rem;
-    margin-bottom:1.00rem;      /* NEW: pushes "+ Add segment" etc. further down */
+    margin-bottom:1.00rem;
 }
 
 /* Tables & metrics */
@@ -534,6 +534,23 @@ hr{
 }
 [data-testid="stDataFrame"]{
     font-size:0.85rem !important;
+}
+
+/* ───────── ETS-specific green highlight ───────── */
+section[data-testid="stSidebar"] .ets-section{
+    border:1px solid #bbf7d0;
+    background:#f0fdf4;
+    border-radius:.6rem;
+    padding:.45rem .55rem;
+    margin-top:.35rem;
+}
+section[data-testid="stSidebar"] .ets-section label{
+    color:#15803d;
+}
+section[data-testid="stSidebar"] .ets-section input,
+section[data-testid="stSidebar"] .ets-section select{
+    border-color:#86efac;
+    background:#ecfdf5;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -633,7 +650,6 @@ with st.sidebar:
         step=1,
         key="consecutive_deficit_years"
     ))
-
     opt_fuels = ["HSFO", "LFO", "MGO"]
     try:
         _idx = opt_fuels.index(_get(DEFAULTS, "opt_reduce_fuel", "HSFO"))
@@ -641,7 +657,9 @@ with st.sidebar:
         _idx = 0
     selected_fuel_for_opt = st.selectbox("Fuel to reduce (for optimization)", opt_fuels, index=_idx)
 
-    # NEW FIELD — BIO share inside blend (for ETS fossil split)
+    # ── ETS: BIO blend settings (green highlighted block) ──
+    st.markdown('<div class="ets-section">', unsafe_allow_html=True)
+
     pure_bio_pct = st.number_input(
         "Pure BIO in the blend mix (%)",
         min_value=0.0,
@@ -654,7 +672,6 @@ with st.sidebar:
              "Used for ETS calculation of fossil share in the blend."
     )
 
-    # NEW FIELD — identify fossil base fuel inside BIO blend (for ETS CO2 factor)
     bio_mix_type = st.selectbox(
         "Bio Mix Type",
         options=["BIO/HSFO mix", "BIO/LFO mix", "BIO/MGO mix"],
@@ -664,6 +681,9 @@ with st.sidebar:
              "Example: if fuel is B30-LFO, choose 'BIO/LFO mix'. "
              "Determines fossil CO₂ emissions under EU ETS."
     )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
     # 3) Market prices  (ALL in EUR)
     st.markdown('<div class="card"><h4>Market prices</h4>', unsafe_allow_html=True)

@@ -1681,16 +1681,26 @@ df_cost = pd.DataFrame({
 })
 # ──────────────────────────────────────────────────────────────────────────────
 # Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost
+# and add combined FuelEU + EU ETS cost
 # ──────────────────────────────────────────────────────────────────────────────
 ets_emissions_series = [ETS_Emissions_tCO2] * len(YEARS)
 ets_cost_series      = [ETS_Cost_EUR_single] * len(YEARS)
 
+# Position: right after Net_Total_Cost_EUR
 insert_pos = list(df_cost.columns).index("Net_Total_Cost_EUR") + 1
 
+# 1) ETS columns (light blue)
 df_cost.insert(insert_pos, "ETS_Emissions_tCO2", ets_emissions_series)
 insert_pos += 1
 df_cost.insert(insert_pos, "ETS_Cost_EUR", ets_cost_series)
+insert_pos += 1
 
+# 2) Combined FuelEU + EU ETS cost (between ETS_Cost_EUR and *_decrease column)
+fuel_eu_plus_ets_series = [
+    net_total_cost_eur_col[i] + ets_cost_series[i]
+    for i in range(len(YEARS))
+]
+df_cost.insert(insert_pos, "FuelEU_+_EU_ETS_Cost", fuel_eu_plus_ets_series)
 
 df_fmt = df_cost.copy()
 for col in df_fmt.columns:
@@ -1698,11 +1708,14 @@ for col in df_fmt.columns:
         df_fmt[col] = df_fmt[col].apply(us2)
 
 def _highlight_ets_columns(col):
-    """Give ETS columns a distinct background color."""
+    """Give ETS and combined-cost columns distinct background colors."""
     if col.name in ["ETS_Emissions_tCO2", "ETS_Cost_EUR"]:
+        # EU ETS columns: light blue
         return ["background-color: #e0f2fe; font-weight: 600;"] * len(col)
+    if col.name == "FuelEU_+_EU_ETS_Cost":
+        # Combined FuelEU + EU ETS cost: soft yellow (different from blue and white)
+        return ["background-color: #fef9c3; font-weight: 600;"] * len(col)
     return [""] * len(col)
-
 
 
 df_display = df_fmt.style.apply(_highlight_ets_columns, axis=0)

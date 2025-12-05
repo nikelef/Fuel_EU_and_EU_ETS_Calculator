@@ -1325,6 +1325,80 @@ MGO_berth_t  = totals_mass["eu_berth"]["MGO"]
 BIO_berth_t  = totals_mass["eu_berth"]["BIO"]
 RFNBO_berth_t= totals_mass["eu_berth"]["RFNBO"]
 ELEC_MJ = ELEC_MJ_input
+# ──────────────────────────────────────────────────────────────────────────────
+# EU ETS — Emissions and Cost (tCO2 and EUR)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Tank-to-wake emission factors [tCO2 / t fuel]
+EF_HSFO_tco2_per_t = 3.114  # residual / HFO
+EF_LFO_tco2_per_t  = 3.151  # typical light fuel oil
+EF_MGO_tco2_per_t  = 3.206  # marine gas oil / diesel
+
+def _ets_in_scope_masses(totals_mass: Dict[str, Dict[str, float]],
+                         pure_bio_pct: float,
+                         bio_mix_type: str) -> Dict[str, float]:
+    """
+    Compute in-scope fuel masses for EU ETS:
+      • 100% of intra-EU voyages
+      • 100% of EU at-berth
+      • 50% of extra-EU voyages
+    BIO_t is a blend: pure_bio_pct% = zero-rated; the rest is fossil
+    of the selected 'Bio Mix Type'.
+    """
+    ets_masses = {f: 0.0 for f in ["HSFO", "LFO", "MGO"]}
+
+    # 1) Fossil fuels directly
+    for f in ["HSFO", "LFO", "MGO"]:
+        ets_masses[f] = (
+            totals_mass["intra_voy"][f] +
+            totals_mass["eu_berth"][f] +
+            0.5 * totals_mass["extra_voy"][f]
+        )
+
+    # 2) BIO blend — split into pure bio (0 ETS) + fossil share
+    bio_in_scope_t = (
+        totals_mass["intra_voy"]["BIO"] +
+        totals_mass["eu_berth"]["BIO"] +
+        0.5 * totals_mass["extra_voy"]["BIO"]
+    )
+    pure_bio_frac = max(0.0, min(float(pure_bio_pct) / 100.0, 1.0))
+    fossil_share_t = bio_in_scope_t * (1.0 - pure_bio_frac)
+
+    # Assign fossil share to the selected mix fossil fuel
+    mix_type = (bio_mix_type or "").upper()
+    if "HSFO" in mix_type:
+        ets_masses["HSFO"] += fossil_share_t
+    elif "LFO" in mix_type or "VLSFO" in mix_type:
+        ets_masses["LFO"] += fossil_share_t
+    elif "MGO" in mix_type:
+        ets_masses["MGO"] += fossil_share_t
+    else:
+        # fallback: treat fossil part as MGO if type is unknown
+        ets_masses["MGO"] += fossil_share_t
+
+    return ets_masses
+
+# Compute in-scope masses using current UI inputs
+ets_masses = _ets_in_scope_masses(totals_mass, pure_bio_pct, bio_mix_type)
+
+# Raw ETS emissions in geographic scope [tCO2]
+ets_emissions_geo_tco2 = (
+    ets_masses["HSFO"] * EF_HSFO_tco2_per_t +
+    ets_masses["LFO"]  * EF_LFO_tco2_per_t  +
+    ets_masses["MGO"]  * EF_MGO_tco2_per_t
+)
+
+# Coverage factor per EU ETS phase (shipping):
+# 2025 → 70% of emissions; 2026+ → 100% (your UI has only these two options)
+if eua_year_selection == "2025":
+    ets_coverage_factor = 0.70
+else:  # "2026+" and any other future default
+    ets_coverage_factor = 1.00
+
+ETS_Emissions_tCO2 = ets_emissions_geo_tco2 * ets_coverage_factor
+
+# EUAs cost [EUR] for the selected year and EUA price
+ETS_Cost_EUR_single = ETS_Emissions_tCO2 * eua_price_eur_per_tco2
 
 def scoped_and_intensity_from_masses(h_v, l_v, m_v, b_v, r_v, h_b, l_b, m_b, b_b, r_b, elec_MJ, wtw_dict, year) -> Tuple[float,float,float]:
     energies_v = {
@@ -1605,16 +1679,37 @@ df_cost = pd.DataFrame({
     "BIO_Increase(t)_For_Opt_Cost": bio_inc_opt_list,
     "Total_Cost_EUR_Opt": total_cost_eur_opt_col,
 })
+# ──────────────────────────────────────────────────────────────────────────────
+# Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost
+# ──────────────────────────────────────────────────────────────────────────────
+ets_emissions_series = [ETS_Emissions_tCO2] * len(YEARS)
+ets_cost_series      = [ETS_Cost_EUR_single] * len(YEARS)
+
+insert_pos = list(df_cost.columns).index("Net_Total_Cost_EUR") + 1
+
+df_cost.insert(insert_pos, "ETS_Emissions_tCO2", ets_emissions_series)
+insert_pos += 1
+df_cost.insert(insert_pos, "ETS_Cost_EUR", ets_cost_series)
 
 df_fmt = df_cost.copy()
 for col in df_fmt.columns:
-    if col != "Year": df_fmt[col] = df_fmt[col].apply(us2)
-#st.dataframe(df_fmt, use_container_width=True)
+    if col != "Year":
+        df_fmt[col] = df_fmt[col].apply(us2)
+
+def _highlight_ets_columns(col):
+    """Give ETS columns a distinct background color."""
+    if col.name in ["ETS_Emissions_tCO2", "ETS_Cost_EUR"]:
+        return ["background-color: #e0f2fe; font-weight: 600;"] * len(col)
+    return [""] * len(col)
+
+df_display = df_fmt.style.apply(_highlight_ets_columns, axis=0)
+
 st.dataframe(
-    df_fmt,
+    df_display,
     use_container_width=True,
     column_order=[c for c in df_fmt.columns if c != "Reduction_%"]
 )
+
 st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_csv(index=False), file_name="fueleu_results_2025_2050_eur.csv", mime="text/csv")
 st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")
 show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")

@@ -1691,16 +1691,32 @@ df_cost.insert(insert_pos, "ETS_Emissions_tCO2", ets_emissions_series)
 insert_pos += 1
 df_cost.insert(insert_pos, "ETS_Cost_EUR", ets_cost_series)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Insert FuelEU + EU ETS combined cost between ETS_Cost_EUR and *_decrease(...)
+# ──────────────────────────────────────────────────────────────────────────────
+fuel_eu_plus_ets_series = df_cost["Net_Total_Cost_EUR"] + df_cost["ETS_Cost_EUR"]
+
+insert_pos = list(df_cost.columns).index("ETS_Cost_EUR") + 1
+df_cost.insert(insert_pos, "FuelEU_+_EU_ETS_Cost", fuel_eu_plus_ets_series)
+
+
 df_fmt = df_cost.copy()
 for col in df_fmt.columns:
     if col != "Year":
         df_fmt[col] = df_fmt[col].apply(us2)
 
-def _highlight_ets_columns(col):
-    """Give ETS columns a distinct background color."""
+def _highlight_special_columns(col):
+    """
+    Colour-code special columns:
+      • ETS columns: light blue
+      • FuelEU_+_EU_ETS_Cost: light yellow (different from ETS and default white)
+    """
     if col.name in ["ETS_Emissions_tCO2", "ETS_Cost_EUR"]:
         return ["background-color: #e0f2fe; font-weight: 600;"] * len(col)
+    if col.name == "FuelEU_+_EU_ETS_Cost":
+        return ["background-color: #fef9c3; font-weight: 600;"] * len(col)
     return [""] * len(col)
+
 
 df_display = df_fmt.style.apply(_highlight_ets_columns, axis=0)
 

@@ -1399,6 +1399,61 @@ ETS_Emissions_tCO2 = ets_emissions_geo_tco2 * ets_coverage_factor
 
 # EUAs cost [EUR] for the selected year and EUA price
 ETS_Cost_EUR_single = ETS_Emissions_tCO2 * eua_price_eur_per_tco2
+def _ets_cost_from_segments(
+    segments: List[Dict[str, Any]],
+    pure_bio_pct: float,
+    bio_mix_type: str,
+    eua_price_eur_per_tco2: float,
+    eua_year_selection: str,
+) -> float:
+    """
+    Recompute EU ETS cost [EUR] from a given list of segments:
+      • 100% of intra-EU voyages and EU at-berth
+      • 50% of extra-EU voyages (EU↔non-EU)
+      • BIO: split into pure BIO (0 ETS) and fossil share according to Bio Mix Type
+      • Apply same coverage factor logic as the main ETS block.
+    """
+    # Build a totals_mass-like structure (only HSFO/LFO/MGO/BIO are relevant for ETS)
+    totals_mass_local = {
+        "intra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
+        "extra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
+        "eu_berth":  {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
+    }
+
+    for seg in segments:
+        t = seg.get("type", SEG_TYPES[0])
+        if t == "Intra-EU voyage":
+            bucket = "intra_voy"
+        elif t == "EU at-berth (port stay)":
+            bucket = "eu_berth"
+        else:
+            bucket = "extra_voy"
+        for f in ["HSFO", "LFO", "MGO", "BIO"]:
+            totals_mass_local[bucket][f] += float(seg.get(f"{f}_t", 0.0) or 0.0)
+
+    # Reuse the existing in-scope logic
+    ets_masses_local = _ets_in_scope_masses(totals_mass_local, pure_bio_pct, bio_mix_type)
+
+    # Tank-to-wake emissions [tCO2]
+    ets_emissions_geo_tco2_x = (
+        ets_masses_local["HSFO"] * EF_HSFO_tco2_per_t +
+        ets_masses_local["LFO"]  * EF_LFO_tco2_per_t  +
+        ets_masses_local["MGO"]  * EF_MGO_tco2_per_t
+    )
+
+    # Coverage factor per EU ETS phase (same logic as base case)
+    if eua_year_selection == "2025":
+        coverage_factor_x = 0.70
+    else:
+        coverage_factor_x = 1.00
+
+    ETS_Emissions_tCO2_x = ets_emissions_geo_tco2_x * coverage_factor_x
+    ETS_Cost_EUR_x = ETS_Emissions_tCO2_x * eua_price_eur_per_tco2
+    return ETS_Cost_EUR_x
+
+
+
+
 
 def scoped_and_intensity_from_masses(h_v, l_v, m_v, b_v, r_v, h_b, l_b, m_b, b_b, r_b, elec_MJ, wtw_dict, year) -> Tuple[float,float,float]:
     energies_v = {
@@ -1526,9 +1581,14 @@ for i in range(len(YEARS)):
     def _total_cost_for_x(x: float) -> float:
         """
         Objective for the optimizer: given a candidate fossil→BIO shift x [t],
-        apply it segment-wise and compute Net_Total_Cost
-        (penalty − credits + BIO premium + pooling cost)
-        using the same per-segment scope logic.
+        apply it segment-wise and compute the combined total cost:
+
+          FuelEU penalty − FuelEU credits
+        + BIO premium
+        + FuelEU pooling cost
+        + EU ETS cost
+
+        using the same per-segment scope logic as the main results table.
         """
         # 1) Apply fossil→BIO shift on a copy of the current segments
         segments_mod, actual_dec, bio_inc_t = _apply_shift_to_segments(
@@ -1542,7 +1602,7 @@ for i in range(len(YEARS)):
         if E_scope_x <= 0.0:
             return 0.0  # no in-scope energy → no cost
 
-        # 3) Penalty / credits
+        # 3) Penalty / credits (FuelEU)
         if final_bal_x < 0:
             step_idx = _step_of_year(YEARS[i])
             start_count = max(int(consecutive_deficit_years_seed), 1)
@@ -1553,13 +1613,27 @@ for i in range(len(YEARS)):
             penalty_eur_x = 0.0
             credits_eur_x = final_bal_x * credit_per_tco2e_val_opt
 
-        # 4) Pooling cost & BIO premium at candidate mix
+        # 4) Pooling cost, BIO premium & ETS cost at candidate mix
         pooling_cost_x = pool_use_x * pooling_price_eur_per_tco2e_val
         bio_total_t_x = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_mod)
         bio_premium_eur_x = bio_total_t_x * bio_premium_eur_per_t_val
 
-        # 5) Objective: match Net_Total_Cost logic
-        return penalty_eur_x - credits_eur_x + bio_premium_eur_x + pooling_cost_x
+        ets_cost_eur_x = _ets_cost_from_segments(
+            segments_mod,
+            pure_bio_pct,
+            bio_mix_type,
+            eua_price_eur_per_tco2,
+            eua_year_selection,
+        )
+
+        # 5) Objective: FuelEU + ETS total cost
+        return (
+            penalty_eur_x
+            - credits_eur_x
+            + bio_premium_eur_x
+            + pooling_cost_x
+            + ets_cost_eur_x
+        )
 
 
     # A) dense coarse scan to bracket minimum
@@ -1602,20 +1676,29 @@ for i in range(len(YEARS)):
     dec_opt_list.append(dec_opt)
     bio_inc_opt_list.append(bio_inc_opt)
 
-# Recompute optimized cost columns (EUR)
-# ---- OPTIMIZER CHANGE 3: subtract credits; pooling cost from candidate, not base
+# Recompute optimized cost columns (EUR) — now FuelEU + ETS
 penalties_eur_opt_col, bio_premium_cost_eur_opt_col, total_cost_eur_opt_col = [], [], []
 for i in range(len(YEARS)):
     x_opt = dec_opt_list[i]
+
     if x_opt <= 0.0 or LCV_BIO <= 0.0:
+        # No feasible shift: optimized = base FuelEU + base ETS
         penalties_eur_opt = penalties_eur[i]
         bio_premium_eur_opt = bio_premium_cost_eur_col[i]
         credits_eur_opt = credits_eur[i]
         pooling_cost_eur_opt = pooling_cost_eur_col[i]
+        ets_cost_eur_opt = ETS_Cost_EUR_single  # same ETS as base case
+
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
-        total_cost_eur_opt_col.append(penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt)
-    
+        total_cost_eur_opt_col.append(
+            penalties_eur_opt
+            - credits_eur_opt
+            + bio_premium_eur_opt
+            + pooling_cost_eur_opt
+            + ets_cost_eur_opt
+        )
+
     else:
         # Apply the optimal shift on a copy of the segments
         segments_opt, actual_dec_opt, bio_inc_opt = _apply_shift_to_segments(
@@ -1624,7 +1707,7 @@ for i in range(len(YEARS)):
             x_opt
         )
 
-        # Recompute intensity and balance for this candidate
+        # Recompute intensity and balance for this candidate (FuelEU)
         g_att_opt, E_scope_opt, final_bal_x, pool_use_x = _scope_and_balance_from_segments(i, segments_opt)
 
         # Penalty / credits at optimum
@@ -1643,10 +1726,23 @@ for i in range(len(YEARS)):
         bio_total_t_opt = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_opt)
         bio_premium_eur_opt = bio_total_t_opt * bio_premium_eur_per_t_val
 
+        # ETS cost at optimum (from optimized segments)
+        ets_cost_eur_opt = _ets_cost_from_segments(
+            segments_opt,
+            pure_bio_pct,
+            bio_mix_type,
+            eua_price_eur_per_tco2,
+            eua_year_selection,
+        )
+
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
         total_cost_eur_opt_col.append(
-            penalties_eur_opt - credits_eur_opt + bio_premium_eur_opt + pooling_cost_eur_opt
+            penalties_eur_opt
+            - credits_eur_opt
+            + bio_premium_eur_opt
+            + pooling_cost_eur_opt
+            + ets_cost_eur_opt
         )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1677,7 +1773,7 @@ df_cost = pd.DataFrame({
 
     decrease_col_name: dec_opt_list,
     "BIO_Increase(t)_For_Opt_Cost": bio_inc_opt_list,
-    "Total_Cost_EUR_Opt": total_cost_eur_opt_col,
+    "Total_Cost_FUEL_EU_ETS_Opt": total_cost_eur_opt_col,
 })
 # ──────────────────────────────────────────────────────────────────────────────
 # Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost

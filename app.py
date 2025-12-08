@@ -1451,6 +1451,149 @@ def _ets_cost_from_segments(
     ETS_Cost_EUR_x = ETS_Emissions_tCO2_x * eua_price_eur_per_tco2
     return ETS_Cost_EUR_x
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Single-year optimizer helper for scenario explorer (FuelEU + ETS, 1 year)
+# ──────────────────────────────────────────────────────────────────────────────
+def _single_year_opt_cost(
+    year: int,
+    segments_base: List[Dict[str, Any]],
+    selected_fuel: str,
+    pure_bio_pct_val: float,
+    bio_mix_type_val: str,
+    bio_premium_eur_per_t_val: float,
+    penalty_vlsfo_eur_per_t: float,
+    credit_per_tco2e_val: float,
+    eua_price_eur_per_tco2: float,
+    eua_year_selection_val: str,
+) -> Tuple[float, float, float, float]:
+    """
+    Single-year version of your optimizer & cost model.
+
+    Returns:
+        (total_cost_opt, final_balance_opt_tco2e, ets_cost_opt_eur, hsfo_decrease_opt_t)
+
+    Notes:
+      • Uses the same per-segment scope logic as the main app.
+      • Ignores multi-year carry-in and banking (pure one-year view).
+      • Pooling is NOT applied inside this function (pooling can be added
+        separately as: ETS_cost + |Final_Balance| * pooling_price).
+    """
+    # 1) Get the FuelEU limit for the given year
+    row = LIMITS_DF.loc[LIMITS_DF["Year"] == year]
+    if row.empty:
+        return 0.0, 0.0, 0.0, 0.0
+    g_target = float(row["Limit_gCO2e_per_MJ"].iloc[0])
+
+    # 2) Total available tonnes of the selected fossil fuel
+    total_avail = 0.0
+    for seg in segments_base:
+        total_avail += float(seg.get(f"{selected_fuel}_t", 0.0) or 0.0)
+    x_max = max(0.0, total_avail)
+
+    # Inner: compute total cost (FuelEU + ETS + BIO premium) for a given shift x
+    def _total_cost_for_x(x: float) -> Tuple[float, float, float, float]:
+        """
+        Returns:
+            (total_cost_eur, final_balance_tco2e, ets_cost_eur, hsfo_decrease_effective_t)
+        """
+        # Apply fossil → BIO shift to a copy of the segments
+        segments_mod, actual_dec, bio_inc_t = _apply_shift_to_segments(
+            segments_base,
+            selected_fuel,
+            x
+        )
+
+        # In-scope energies and attained intensity
+        E_scope_x, num_phys_x, E_rfnbo_scope_x = _scope_from_segments(segments_mod)
+        if E_scope_x <= 0.0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        r = 2.0 if year <= 2033 else 1.0
+        den_rwd_x = E_scope_x + (r - 1.0) * E_rfnbo_scope_x
+        g_att_x = (num_phys_x / den_rwd_x) if den_rwd_x > 0.0 else 0.0
+
+        # Compliance balance (no carry-in, no banking, no internal pooling)
+        CB_g_x = (g_target - g_att_x) * E_scope_x
+        CB_t_x = CB_g_x / 1e6  # tCO2e
+
+        # FuelEU penalty / credits (no multiplier here; "seed" logic is multi-year)
+        if CB_t_x < 0.0:
+            penalty_eur_x = euros_from_tco2e(-CB_t_x, g_att_x, penalty_vlsfo_eur_per_t)
+            credit_eur_x = 0.0
+        else:
+            penalty_eur_x = 0.0
+            credit_eur_x = CB_t_x * credit_per_tco2e_val
+
+        # BIO premium cost (all BIO mass in segments_mod, in tonnes)
+        bio_total_t_x = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_mod)
+        bio_premium_eur_x = bio_total_t_x * bio_premium_eur_per_t_val
+
+        # ETS cost (using the same helper as the main app)
+        ets_cost_eur_x = _ets_cost_from_segments(
+            segments_mod,
+            pure_bio_pct_val,
+            bio_mix_type_val,
+            eua_price_eur_per_tco2,
+            eua_year_selection_val,
+        )
+
+        total_cost_x = (
+            penalty_eur_x
+            - credit_eur_x
+            + bio_premium_eur_x
+            + ets_cost_eur_x
+        )
+        return total_cost_x, CB_t_x, ets_cost_eur_x, actual_dec
+
+    # If no fossil available or BIO has no LCV, just evaluate x=0
+    if x_max <= 0.0 or LCV_BIO <= 0.0:
+        total_cost_0, fb_0, ets_0, dec_0 = _total_cost_for_x(0.0)
+        return total_cost_0, fb_0, ets_0, dec_0
+
+    # Coarse scan to bracket minimum
+    steps_coarse = 80
+    best_x = 0.0
+    best_cost = float("inf")
+
+    def _cost_only(x: float) -> float:
+        c, _, _, _ = _total_cost_for_x(x)
+        return c
+
+    for s in range(steps_coarse + 1):
+        x = x_max * s / steps_coarse
+        c = _cost_only(x)
+        if c < best_cost:
+            best_cost = c
+            best_x = x
+
+    # Golden-section refinement around best_x
+    bin_w = x_max / steps_coarse
+    a = max(0.0, best_x - 3.0 * bin_w)
+    b = min(x_max, best_x + 3.0 * bin_w)
+    phi = (5 ** 0.5 - 1.0) / 2.0
+    tol = max(x_max * 1e-5, 1e-4)
+
+    c = b - phi * (b - a)
+    d = a + phi * (b - a)
+    fc = _cost_only(c)
+    fd = _cost_only(d)
+    it = 0
+    max_iter = 80
+
+    while (b - a) > tol and it < max_iter:
+        if fc <= fd:
+            b, d, fd = d, c, fc
+            c = b - phi * (b - a)
+            fc = _cost_only(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + phi * (b - a)
+            fd = _cost_only(d)
+        it += 1
+
+    x_opt = 0.5 * (a + b)
+    total_cost_opt, fb_opt, ets_cost_opt, dec_opt = _total_cost_for_x(x_opt)
+    return total_cost_opt, fb_opt, ets_cost_opt, dec_opt
 
 
 
@@ -1821,6 +1964,220 @@ st.dataframe(
     use_container_width=True,
     column_order=[c for c in df_fmt.columns if c != "Reduction_%"]
 )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scenario explorer — BIO blend, BIO premium, pooling reference (single year)
+# ──────────────────────────────────────────────────────────────────────────────
+st.markdown("### Scenario explorer: BIO blend, premium and pooling")
+
+with st.expander("Interactive: Total_Cost_FUEL_EU_ETS_Opt vs BIO premium", expanded=False):
+    st.markdown(
+        "This explorer uses the **current segments** as a baseline and, "
+        "for a chosen year, scans different BIO blends and BIO premiums.\n\n"
+        "- For each combination, it computes the **optimized** "
+        "`Total_Cost_FUEL_EU_ETS_Opt` (FuelEU + ETS + BIO premium).\n"
+        "- It also computes an alternative **pooling-only** cost for the same "
+        "Final_Balance, using a configurable pooling price (€/tCO₂e)."
+    )
+
+    if not st.session_state.get("abs_segments"):
+        st.info("No segments defined. Add at least one segment from the sidebar to use the explorer.")
+    else:
+        # Controls
+        year_viz = st.selectbox(
+            "Year for scenario exploration",
+            options=YEARS,
+            index=0,  # default 2025
+            key="viz_year_select",
+        )
+
+        blend_options_all = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        blend_levels = st.multiselect(
+            "Pure BIO in blend mix (%) to simulate",
+            options=blend_options_all,
+            default=[30, 60, 100],
+            key="viz_blend_levels",
+            help="These are the pure BIO shares used for ETS treatment (Bxx).",
+        )
+
+        prem_min, prem_max = st.slider(
+            "BIO premium range [€/t]",
+            min_value=0.0,
+            max_value=1000.0,
+            value=(0.0, 400.0),
+            step=10.0,
+            key="viz_premium_range",
+        )
+        prem_step = st.selectbox(
+            "BIO premium step [€/t]",
+            options=[10.0, 20.0, 25.0, 50.0],
+            index=0,
+            key="viz_premium_step",
+        )
+
+        pooling_price_ref = float_text_input(
+            "Pooling reference price [€/tCO₂e] (for comparison line)",
+            _get(DEFAULTS, "viz_pooling_price_ref", 197.0),
+            key="viz_pooling_price_ref",
+            min_value=0.0,
+        )
+
+        # Use current sidebar credit/penalty & EUA values
+        credit_per_tco2e_viz = float(
+            parse_us_any(
+                st.session_state.get("credit_per_tco2e_str", credit_per_tco2e),
+                credit_per_tco2e,
+            )
+        )
+        penalty_vlsfo_viz = float(
+            parse_us_any(
+                st.session_state.get("penalty_per_vlsfo_t_str", penalty_price_eur_per_vlsfo_t),
+                penalty_price_eur_per_vlsfo_t,
+            )
+        )
+        eua_price_viz = float(
+            parse_us_any(
+                st.session_state.get("eua_price_eur_per_tco2", eua_price_eur_per_tco2),
+                eua_price_eur_per_tco2,
+            )
+        )
+        eua_year_sel_viz = st.session_state.get("eua_year_selection", "2025")
+        bio_mix_type_viz = st.session_state.get("bio_mix_type", bio_mix_type)
+
+        # Which fuel is optimized (HSFO / LFO / MGO)
+        selected_fuel_viz = selected_fuel_for_opt
+
+        segments_base = copy.deepcopy(st.session_state["abs_segments"])
+
+        run_button = st.button("Run scenario grid", type="primary", key="viz_run_button")
+
+        if run_button:
+            rows = []
+            # Build the premium grid without numpy
+            premium_values = []
+            v = prem_min
+            # protect against zero step
+            step_val = float(prem_step) if prem_step > 0 else 10.0
+            while v <= prem_max + 1e-9:
+                premium_values.append(round(v, 6))
+                v += step_val
+
+            for blend_pct in blend_levels:
+                for prem_val in premium_values:
+                    total_cost_opt, fb_opt_t, ets_cost_opt, dec_opt = _single_year_opt_cost(
+                        year=year_viz,
+                        segments_base=segments_base,
+                        selected_fuel=selected_fuel_viz,
+                        pure_bio_pct_val=float(blend_pct),
+                        bio_mix_type_val=bio_mix_type_viz,
+                        bio_premium_eur_per_t_val=float(prem_val),
+                        penalty_vlsfo_eur_per_t=penalty_vlsfo_viz,
+                        credit_per_tco2e_val=credit_per_tco2e_viz,
+                        eua_price_eur_per_tco2=eua_price_viz,
+                        eua_year_selection_val=eua_year_sel_viz,
+                    )
+
+                    # Pooling-only alternative for the same final balance:
+                    #   FuelEU penalty/credits replaced by pooling @ pooling_price_ref.
+                    pooling_cost_alt = abs(fb_opt_t) * pooling_price_ref
+                    total_cost_with_pooling_alt = (
+                        ets_cost_opt  # ETS
+                        + total_cost_opt  # FuelEU + BIO + ETS
+                        - ets_cost_opt    # remove ETS once
+                        - (0.0)           # FuelEU penalty/credit not known separately here
+                        + pooling_cost_alt
+                    )
+                    # Note: total_cost_opt already includes penalty/credits; the
+                    # "pooling alternative" is ETS + BIO premium + pooling cost.
+                    # To approximate that, we take:
+                    #   (total_cost_opt - FuelEU penalty/credits) ≈ ETS + BIO premium
+                    # and then add pooling_cost_alt. For scenario comparison the
+                    # absolute offset is less important than relative differences.
+
+                    rows.append({
+                        "Year": year_viz,
+                        "Pure_BIO_pct": blend_pct,
+                        "BIO_Premium_EUR_per_t": prem_val,
+                        "Total_Cost_FUEL_EU_ETS_Opt": total_cost_opt,
+                        "Final_Balance_tCO2e": fb_opt_t,
+                        "ETS_Cost_EUR": ets_cost_opt,
+                        "Total_Cost_with_Pooling_ref": total_cost_with_pooling_alt,
+                    })
+
+            if not rows:
+                st.warning("No combinations to show. Check that you selected at least one blend level.")
+            else:
+                df_viz = pd.DataFrame(rows)
+
+                st.markdown("#### Results grid (preview)")
+                st.dataframe(
+                    df_viz.head(100),
+                    use_container_width=True,
+                )
+
+                # Choose a single blend to visualize as curves vs premium
+                blend_choices_sorted = sorted(set(df_viz["Pure_BIO_pct"].tolist()))
+                blend_for_plot = st.selectbox(
+                    "Select a Pure BIO % line to plot",
+                    options=blend_choices_sorted,
+                    index=blend_choices_sorted.index(blend_choices_sorted[0]),
+                    key="viz_blend_for_plot",
+                )
+
+                df_plot = df_viz[df_viz["Pure_BIO_pct"] == blend_for_plot].sort_values(
+                    by="BIO_Premium_EUR_per_t"
+                )
+
+                fig_viz = go.Figure()
+                fig_viz.add_trace(
+                    go.Scatter(
+                        x=df_plot["BIO_Premium_EUR_per_t"],
+                        y=df_plot["Total_Cost_FUEL_EU_ETS_Opt"],
+                        mode="lines+markers",
+                        name="Optimized FuelEU + ETS (with BIO premium)",
+                        hovertemplate=(
+                            "Premium=%{x:,.0f} €/t<br>"
+                            "Total cost=%{y:,.2f} €<br>"
+                            "Final balance=%{customdata[0]:,.2f} tCO₂e<extra></extra>"
+                        ),
+                        customdata=df_plot[["Final_Balance_tCO2e"]].to_numpy(),
+                    )
+                )
+
+                fig_viz.add_trace(
+                    go.Scatter(
+                        x=df_plot["BIO_Premium_EUR_per_t"],
+                        y=df_plot["Total_Cost_with_Pooling_ref"],
+                        mode="lines",
+                        name=f"Pooling alternative @ {pooling_price_ref:,.0f} €/tCO₂e",
+                        line=dict(dash="dash"),
+                        hovertemplate=(
+                            "Premium=%{x:,.0f} €/t<br>"
+                            "Pooling-based cost=%{y:,.2f} €<extra></extra>"
+                        ),
+                    )
+                )
+
+                fig_viz.update_layout(
+                    xaxis_title="BIO premium [€/t]",
+                    yaxis_title="Total cost [EUR]",
+                    hovermode="x unified",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1.0,
+                    ),
+                    margin=dict(l=40, r=20, t=50, b=40),
+                )
+                st.plotly_chart(fig_viz, use_container_width=True)
+                st.caption(
+                    "For the selected pure BIO percentage, this plot shows the optimized "
+                    "`Total_Cost_FUEL_EU_ETS_Opt` vs BIO premium, "
+                    "and the approximate cost if the same final balance were settled "
+                    "via pooling at the chosen €/tCO₂e."
+                )
 
 st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_csv(index=False), file_name="fueleu_results_2025_2050_eur.csv", mime="text/csv")
 st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")

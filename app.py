@@ -1928,7 +1928,306 @@ st.dataframe(
     column_order=[c for c in df_fmt.columns if c != "Reduction_%"]
 )
 
-st.download_button("fueleu_voyage_segments_2025_2050_eur.csv", data=df_cost.to_csv(index=False), file_name="fueleu_results_2025_2050_eur.csv", mime="text/csv")
+# ──────────────────────────────────────────────────────────────────────────────
+# Interactive simulation: BIO premium vs optimized cost vs pooling strategy
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _total_cost_for_candidate_premium(
+    year_idx: int,
+    segments_mod: List[Dict[str, Any]],
+    bio_premium_eur_per_t_candidate: float,
+) -> float:
+    """
+    Total cost (FuelEU + ETS) for a given candidate segments mix and BIO premium,
+    using the same core logic as the main optimizer but with:
+      • pooling cost forced to 0 for this BIO-optimization simulation
+      • carry-in and banking as in the main table (carry_in_list[...] reused)
+    """
+    g_att_x, E_scope_x, final_bal_x, pool_use_x = _scope_and_balance_from_segments(
+        year_idx,
+        segments_mod,
+    )
+
+    if E_scope_x <= 0.0:
+        return 0.0
+
+    year = YEARS[year_idx]
+
+    # Penalty / credits
+    if final_bal_x < 0:
+        step_idx = _step_of_year(year)
+        start_count = max(int(consecutive_deficit_years_seed), 1)
+        step_mult = 1.0 + (start_count - 1) * 0.10
+        penalty_eur_x = euros_from_tco2e(-final_bal_x, g_att_x, penalty_vlsfo_opt) * step_mult
+        credits_eur_x = 0.0
+    else:
+        penalty_eur_x = 0.0
+        credits_eur_x = final_bal_x * credit_per_tco2e_val_opt
+
+    # For this simulation, we assume no pooling cost in the BIO-optimization route
+    pooling_cost_x = 0.0
+
+    # BIO premium cost (all BIO tonnes in the candidate mix)
+    bio_total_t_x = sum(float(seg.get("BIO_t", 0.0) or 0.0) for seg in segments_mod)
+    bio_premium_cost_x = bio_total_t_x * bio_premium_eur_per_t_candidate
+
+    # ETS cost at candidate mix
+    ets_cost_eur_x = _ets_cost_from_segments(
+        segments_mod,
+        pure_bio_pct,
+        bio_mix_type,
+        eua_price_eur_per_tco2,
+        eua_year_selection,
+    )
+
+    # Total cost = FuelEU (penalty − credit + BIO premium + pooling) + ETS
+    return penalty_eur_x - credits_eur_x + bio_premium_cost_x + pooling_cost_x + ets_cost_eur_x
+
+
+def _optimized_total_cost_for_year_and_premium(
+    year_idx: int,
+    bio_premium_eur_per_t_candidate: float,
+) -> Tuple[float, float]:
+    """
+    For a given year index and BIO premium [EUR/t], find the optimal fossil→BIO
+    shift x [t] (reduce selected fuel, increase BIO energy-equivalently) that
+    minimizes the total cost FuelEU + ETS.
+
+    Returns (min_total_cost, x_opt).
+    """
+    # Total available mass of the selected fuel (voyage + berth)
+    if selected_fuel_for_opt == "HSFO":
+        total_avail = HSFO_voy_t + HSFO_berth_t
+    elif selected_fuel_for_opt == "LFO":
+        total_avail = LFO_voy_t + LFO_berth_t
+        # note: LFO_voy_t / LFO_berth_t defined earlier from totals_mass
+    else:
+        total_avail = MGO_voy_t + MGO_berth_t
+
+    # If no fossil available or no BIO LCV, optimization cannot change the mix
+    if total_avail <= 0.0 or LCV_BIO <= 0.0:
+        # Cost with current segments and given BIO premium
+        cost_no_shift = _total_cost_for_candidate_premium(
+            year_idx,
+            st.session_state.get("abs_segments", []),
+            bio_premium_eur_per_t_candidate,
+        )
+        return cost_no_shift, 0.0
+
+    x_max = total_avail
+
+    def _objective(x: float) -> float:
+        segments_mod, _, _ = _apply_shift_to_segments(
+            st.session_state["abs_segments"],
+            selected_fuel_for_opt,
+            x,
+        )
+        return _total_cost_for_candidate_premium(
+            year_idx,
+            segments_mod,
+            bio_premium_eur_per_t_candidate,
+        )
+
+    # Coarse scan on [0, x_max]
+    steps_coarse = 200
+    best_x, best_cost = 0.0, float("inf")
+    for s in range(steps_coarse + 1):
+        x = x_max * s / steps_coarse
+        c = _objective(x)
+        if c < best_cost:
+            best_cost, best_x = c, x
+
+    # Golden-section refinement around the best coarse point (±3 bins)
+    bin_w = x_max / steps_coarse
+    a = max(0.0, best_x - 3.0 * bin_w)
+    b = min(x_max, best_x + 3.0 * bin_w)
+
+    phi = (5 ** 0.5 - 1) / 2.0  # ≈ 0.618
+    tol = max(x_max * 1e-5, 1e-4)
+
+    c = b - phi * (b - a)
+    d = a + phi * (b - a)
+    fc = _objective(c)
+    fd = _objective(d)
+
+    it, max_iter = 0, 120
+    while (b - a) > tol and it < max_iter:
+        if fc <= fd:
+            b, d, fd = d, c, fc
+            c = b - phi * (b - a)
+            fc = _objective(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + phi * (b - a)
+            fd = _objective(d)
+        it += 1
+
+    x_opt = (a + b) / 2.0
+    cost_opt = _objective(x_opt)
+    return cost_opt, x_opt
+
+
+st.markdown("### Interactive simulation: BIO premium vs optimized FuelEU + EU ETS cost")
+
+if not st.session_state.get("abs_segments"):
+    st.info("Add at least one voyage / berth segment in the sidebar to run the simulation.")
+else:
+    # Controls for the simulation
+    with st.expander("Simulation controls", expanded=True):
+        sim_year = st.selectbox(
+            "Year for simulation",
+            YEARS,
+            index=0,
+            key="sim_year_bio_premium",
+        )
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            premium_min = float_text_input(
+                "BIO premium min [€/t]",
+                0.0,
+                key="sim_premium_min",
+                min_value=0.0,
+            )
+        with c2:
+            premium_max = float_text_input(
+                "BIO premium max [€/t]",
+                1_000.0,
+                key="sim_premium_max",
+                min_value=0.0,
+            )
+        with c3:
+            premium_step = float_text_input(
+                "BIO premium step [€/t]",
+                50.0,
+                key="sim_premium_step",
+                min_value=1.0,
+            )
+
+        pooling_price_compare = float_text_input(
+            "Pooling price for comparison [€/tCO₂e]",
+            200.0,
+            key="sim_pool_price",
+            min_value=0.0,
+        )
+
+    # Basic guards
+    if premium_step <= 0:
+        st.warning("BIO premium step must be > 0 to run the simulation.")
+    else:
+        # Ensure min ≤ max
+        if premium_max < premium_min:
+            premium_min, premium_max = premium_max, premium_min
+
+        # Build premium grid (X-axis)
+        n_points = int((premium_max - premium_min) // premium_step) + 1
+        if n_points <= 0:
+            n_points = 1
+        bio_premium_grid = [
+            premium_min + i * premium_step
+            for i in range(n_points)
+        ]
+
+        # Index for selected year
+        try:
+            year_idx_sim = YEARS.index(int(sim_year))
+        except ValueError:
+            year_idx_sim = 0
+
+        # 1) BIO optimization route: for each BIO premium → optimized Total_Cost_FUEL_EU_ETS_Opt
+        cost_opt_grid: List[float] = []
+        for prem in bio_premium_grid:
+            cost_opt, _ = _optimized_total_cost_for_year_and_premium(
+                year_idx_sim,
+                prem,
+            )
+            cost_opt_grid.append(cost_opt)
+
+        # 2) Pure pooling route:
+        #    Use Final_Balance_tCO2e from the first-parameters results table (no extra BIO optimization),
+        #    and assume we compensate that balance entirely via pooling at the user-input price.
+        try:
+            row_sim = df_cost[df_cost["Year"] == int(sim_year)].iloc[0]
+            final_balance_base = float(row_sim["Final_Balance_tCO2e"])
+            ets_cost_base = float(row_sim["ETS_Cost_EUR"])
+        except (IndexError, KeyError):
+            final_balance_base = 0.0
+            ets_cost_base = ETS_Cost_EUR_single
+
+        # Pooling component: pool_use = −Final_Balance ⇒ cost = pool_use * price = −Final_Balance * price
+        pooling_cost_component = -final_balance_base * pooling_price_compare
+
+        # Total cost for pooling route:
+        #   = ETS (base, from first parameters)
+        #   + BIO premium for existing BIO tonnes (no extra BIO optimization)
+        #   + pooling cost to compensate the Final_Balance_tCO2e
+        cost_pooling_grid: List[float] = [
+            bio_mass_total_t_base * prem + ets_cost_base + pooling_cost_component
+            for prem in bio_premium_grid
+        ]
+
+        # Build the interactive graph
+        fig_sim = go.Figure()
+
+        fig_sim.add_trace(
+            go.Scatter(
+                x=bio_premium_grid,
+                y=cost_opt_grid,
+                mode="lines+markers",
+                name="BIO optimization (FuelEU + ETS)",
+                hovertemplate=(
+                    "Premium = %{x:,.0f} €/t<br>"
+                    "Total cost = %{y:,.0f} EUR<extra></extra>"
+                ),
+            )
+        )
+
+        fig_sim.add_trace(
+            go.Scatter(
+                x=bio_premium_grid,
+                y=cost_pooling_grid,
+                mode="lines",
+                name=f"Pooling only @ {pooling_price_compare:,.0f} €/tCO₂e",
+                line=dict(dash="dash"),
+                hovertemplate=(
+                    "Premium = %{x:,.0f} €/t<br>"
+                    "Total cost = %{y:,.0f} EUR<extra></extra>"
+                ),
+            )
+        )
+
+        # Vertical reference line at the current BIO premium from the sidebar (if within range)
+        if premium_min <= bio_premium_eur_per_t_val <= premium_max:
+            fig_sim.add_vline(
+                x=bio_premium_eur_per_t_val,
+                line=dict(dash="dot"),
+                annotation_text="Current BIO premium",
+                annotation_position="top left",
+            )
+
+        fig_sim.update_layout(
+            xaxis_title="Premium BIO vs selected fuel [EUR/ton]",
+            yaxis_title="Total_Cost_FUEL_EU_ETS_Opt [EUR]",
+            hovermode="x unified",
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1.0,
+            ),
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+
+        st.plotly_chart(fig_sim, use_container_width=True)
+
+# Existing download and footer remain below the graph
+st.download_button(
+    "fueleu_voyage_segments_2025_2050_eur.csv",
+    data=df_cost.to_csv(index=False),
+    file_name="fueleu_results_2025_2050_eur.csv",
+    mime="text/csv",
+)
 st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")
 show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")
 st.caption("Built with Streamlit • Hosting on Streamlit Community Cloud. By using this app you also accept Streamlit’s Terms and Privacy.")

@@ -767,7 +767,7 @@ with st.sidebar:
 # Live LCV/WtW dicts (used throughout)
 # ──────────────────────────────────────────────────────────────────────────────
 LCV_HSFO = parse_us_any(st.session_state.get("LCV_HSFO", _get(DEFAULTS,"LCV_HSFO",40200.0)), 40200.0) 
-LCV_LFO  = parse_us_any(st.session_state.get("LCV_LFO" , _get(DEFAULTS,"LCV_LFO" ,41000.0)), 41000.0)
+LCV_LFO  = parse_us_any(st.session_state.get("LCV_LFO" , _get(DEFAULTS,"LCV_LFO" ,41200.0)), 41200.0)
 LCV_MGO  = parse_us_any(st.session_state.get("LCV_MGO" , _get(DEFAULTS,"LCV_MGO" ,42700.0)), 42700.0)
 LCV_BIO  = parse_us_any(st.session_state.get("LCV_BIO" , _get(DEFAULTS,"LCV_BIO" ,39800.0)), 39800.0)
 LCV_RFNBO= parse_us_any(st.session_state.get("LCV_RFNBO", _get(DEFAULTS,"LCV_RFNBO",30000.0)),30000.0)

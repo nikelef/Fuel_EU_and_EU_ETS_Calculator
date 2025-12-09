@@ -2173,12 +2173,9 @@ else:
             go.Scatter(
                 x=bio_premium_grid,
                 y=cost_pooling_grid,
-                mode="lines+markers+text",
+                mode="lines",
                 name=f"Pooling only @ {pooling_price_compare:,.0f} €/tCO₂e",
                 line=dict(dash="dash"),
-                text=[f"{v:,.0f}" for v in cost_pooling_grid],  # show cost values on the line
-                textposition="top center",
-                textfont=dict(size=11),
                 hovertemplate=(
                     "Premium = %{x:,.0f} €/t<br>"
                     "Total cost = %{y:,.0f} EUR<extra></extra>"

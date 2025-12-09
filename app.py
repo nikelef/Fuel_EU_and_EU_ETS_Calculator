@@ -2067,7 +2067,7 @@ def _optimized_total_cost_for_year_and_premium(
     return cost_opt, x_opt
 
 
-st.markdown("### Interactive simulation: BIO premium vs optimized FuelEU + EU ETS cost")
+st.markdown("### Interactive simulation: Optimized FuelEU + EU ETS cost     BIO VS Pooling Policy")
 
 if not st.session_state.get("abs_segments"):
     st.info("Add at least one voyage / berth segment in the sidebar to run the simulation.")

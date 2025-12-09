@@ -832,71 +832,6 @@ def _segment_scope_with_toggle(seg: Dict[str,Any], energies_all: Dict[str,float]
     else:
         return {k: 0.5*energies_all[k] for k in energies_all.keys()}, 0.0
 
-def _has_prioritized_segments(segments: List[Dict[str, Any]]) -> bool:
-    """
-    True if the UI has at least one cross-border segment
-    with 'Apply prioritized allocation' ticked.
-    """
-    for seg in segments or []:
-        t = seg.get("type", SEG_TYPES[0])
-        if t in ("EU→non-EU voyage", "non-EU→EU voyage") and bool(seg.get("prio_on", True)):
-            return True
-    return False
-
-
-def _global_rearrange_scope(
-    combined_all: Dict[str, float],
-    combined_scope: Dict[str, float],
-    wtw_dict: Dict[str, float],
-) -> Dict[str, float]:
-    """
-    Final global WtW-prioritized reallocation for the combined in-scope mix.
-
-    • Keeps total in-scope energy (including ELEC) unchanged.
-    • For fuels only, reassigns in-scope energy across fuels by ascending WtW,
-      using up to 100% of each fuel's total segment energy (combined_all[f]).
-    • Per-segment in-scope stacks remain unchanged; only the combined stack
-      and attained intensity/costs use this rearranged mix.
-    """
-    scope_total = sum(combined_scope.values())
-    if scope_total <= 0.0:
-        return dict(combined_scope)
-
-    elec_scope = float(combined_scope.get("ELEC", 0.0) or 0.0)
-    fuel_budget = max(scope_total - elec_scope, 0.0)
-
-    # Start result with electricity fixed
-    result = {k: 0.0 for k in combined_scope.keys()}
-    result["ELEC"] = elec_scope
-    if fuel_budget <= 0.0:
-        return result
-
-    # Fuels sorted by ascending WtW
-    fuels_sorted = sorted(FUELS, key=lambda f: wtw_dict.get(f, float("inf")))
-    remaining = fuel_budget
-
-    for f in fuels_sorted:
-        if remaining <= 0.0:
-            break
-        avail = float(combined_all.get(f, 0.0) or 0.0)  # 100% of segment energy for fuel f
-        if avail <= 0.0:
-            continue
-        take = min(avail, remaining)
-        result[f] = take
-        remaining -= take
-
-    # Numerical safety: if tiny residue remains, add it to the last fuel that got some allocation
-    if remaining > 1e-6:
-        for f in reversed(fuels_sorted):
-            if result.get(f, 0.0) > 0.0:
-                result[f] += remaining
-                break
-
-    return result
-
-
-
-
 def _stack_with_arrows(title: str, left_vals: Dict[str,float], right_vals: Dict[str,float], show_elec: bool):
     categories = ["All", "In-scope"]
     fuels_sorted = sorted(FUELS, key=lambda f: wtw.get(f, float("inf")))
@@ -981,24 +916,13 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 # Combined (from segment sums) → metrics, derived prices, stacks, intensity
 # ──────────────────────────────────────────────────────────────────────────────
-# ── Final global WtW-prioritized rearrangement (for combined in-scope only) ──
-if _has_prioritized_segments(st.session_state.get("abs_segments", [])):
-    combined_scope_final = _global_rearrange_scope(combined_all, combined_scope, wtw)
-else:
-    # No prioritized allocation in UI → keep original summed in-scope mix
-    combined_scope_final = dict(combined_scope)
-
 E_total_MJ = sum(combined_all.values())
-E_scope_MJ = sum(combined_scope_final.values())
+E_scope_MJ = sum(combined_scope.values())
 
-# Attained GHG of combined in-scope mix (after global rearrangement)
-num_phys = sum(
-    combined_scope_final.get(k, 0.0) * wtw.get(k, 0.0)
-    for k in ["HSFO", "LFO", "MGO", "BIO", "RFNBO", "ELEC"]
-)
+# Attained GHG of combined in-scope mix
+num_phys = sum(combined_scope.get(k,0.0) * wtw.get(k,0.0) for k in ["HSFO","LFO","MGO","BIO","RFNBO","ELEC"])
 den_phys = E_scope_MJ
-E_rfnbo_scope = combined_scope_final.get("RFNBO", 0.0)
-
+E_rfnbo_scope = combined_scope.get("RFNBO", 0.0)
 def attained_intensity_for_year(y: int) -> float:
     if den_phys <= 0: return 0.0
     r = 2.0 if y <= 2033 else 1.0
@@ -1023,18 +947,9 @@ with cB: st.metric("In-scope energy", f"{us2(E_scope_MJ)} MJ")
 with cC: st.metric("Fossil — all", f"{us2(combined_all['HSFO'] + combined_all['LFO'] + combined_all['MGO'])} MJ")
 with cD: st.metric("BIO — all", f"{us2(combined_all['BIO'])} MJ")
 with cE: st.metric("RFNBO — all", f"{us2(combined_all['RFNBO'])} MJ")
-with cF: st.metric(
-    "Fossil — in scope",
-    f"{us2(combined_scope_final['HSFO'] + combined_scope_final['LFO'] + combined_scope_final['MGO'])} MJ"
-)
-with cG: st.metric(
-    "BIO — in scope",
-    f"{us2(combined_scope_final['BIO'])} MJ"
-)
-with cH: st.metric(
-    "RFNBO — in scope",
-    f"{us2(combined_scope_final['RFNBO'])} MJ"
-)
+with cF: st.metric("Fossil — in scope", f"{us2(combined_scope['HSFO']+combined_scope['LFO']+combined_scope['MGO'])} MJ")
+with cG: st.metric("BIO — in scope", f"{us2(combined_scope['BIO'])} MJ")
+with cH: st.metric("RFNBO — in scope", f"{us2(combined_scope['RFNBO'])} MJ")
 
 # Derived prices card (EUR)
 with st.sidebar:
@@ -1058,12 +973,12 @@ left_vals = {
     "MGO":   combined_all.get("MGO",   0.0),
 }
 right_vals = {
-    "ELEC":  combined_scope_final.get("ELEC",  0.0),
-    "RFNBO": combined_scope_final.get("RFNBO", 0.0),
-    "BIO":   combined_scope_final.get("BIO",   0.0),
-    "HSFO":  combined_scope_final.get("HSFO",  0.0),
-    "LFO":   combined_scope_final.get("LFO",   0.0),
-    "MGO":   combined_scope_final.get("MGO",   0.0),
+    "ELEC":  combined_scope.get("ELEC",  0.0),
+    "RFNBO": combined_scope.get("RFNBO", 0.0),
+    "BIO":   combined_scope.get("BIO",   0.0),
+    "HSFO":  combined_scope.get("HSFO",  0.0),
+    "LFO":   combined_scope.get("LFO",   0.0),
+    "MGO":   combined_scope.get("MGO",   0.0),
 }
 
 fig_stacks = go.Figure()
@@ -1322,43 +1237,22 @@ def _scope_from_segments(segments: List[Dict[str, Any]]) -> Tuple[float, float, 
     - E_scope_x: total in-scope energy [MJ]
     - num_phys_x: numerator Σ(E_f_scope * WtW_f)
     - E_rfnbo_scope_x: in-scope RFNBO energy [MJ]
-
-    and then apply the same final global WtW-prioritized rearrangement that is
-    used for the combined in-scope stack in the main view.
     """
     combined_scope_x = {"ELEC": 0.0, "RFNBO": 0.0, "BIO": 0.0, "HSFO": 0.0, "LFO": 0.0, "MGO": 0.0}
-    combined_all_x   = {"ELEC": 0.0, "RFNBO": 0.0, "BIO": 0.0, "HSFO": 0.0, "LFO": 0.0, "MGO": 0.0}
 
     for seg in segments:
         energies_all = _segment_energy_mj(seg)
         energies_scope, elec_mj_seg = _segment_scope_with_toggle(seg, energies_all)
-
-        # 100% energies per fuel (for “100% of segment energy” cap)
-        for f in FUELS:
-            combined_all_x[f] += float(energies_all.get(f, 0.0) or 0.0)
-        combined_all_x["ELEC"] += elec_mj_seg
-
-        # In-scope sums (before global rearrangement)
+        combined_scope_x["ELEC"] += elec_mj_seg
         for f in FUELS:
             combined_scope_x[f] += float(energies_scope.get(f, 0.0) or 0.0)
-        combined_scope_x["ELEC"] += elec_mj_seg
 
-    E_scope_x_raw = sum(combined_scope_x.values())
-    if E_scope_x_raw <= 0.0:
-        return 0.0, 0.0, 0.0
-
-    # Apply the same global rearrangement only if prioritized allocation is used in UI
-    if _has_prioritized_segments(segments):
-        combined_scope_final_x = _global_rearrange_scope(combined_all_x, combined_scope_x, wtw)
-    else:
-        combined_scope_final_x = combined_scope_x
-
-    E_scope_x = sum(combined_scope_final_x.values())
+    E_scope_x = sum(combined_scope_x.values())
     num_phys_x = sum(
-        combined_scope_final_x.get(k, 0.0) * wtw.get(k, 0.0)
+        combined_scope_x.get(k, 0.0) * wtw.get(k, 0.0)
         for k in ["HSFO", "LFO", "MGO", "BIO", "RFNBO", "ELEC"]
     )
-    E_rfnbo_scope_x = combined_scope_final_x.get("RFNBO", 0.0)
+    E_rfnbo_scope_x = combined_scope_x.get("RFNBO", 0.0)
     return E_scope_x, num_phys_x, E_rfnbo_scope_x
 
 

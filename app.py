@@ -1239,55 +1239,55 @@ net_total_cost_eur_col = [penalties_eur[i] - credits_eur[i] + bio_premium_cost_e
 # ──────────────────────────────────────────────────────────────────────────────
 # Optimizer utilities (kept; pooled allocator approximation)
 # ──────────────────────────────────────────────────────────────────────────────
-
-def _apply_shift_to_segments(base_segments: List[Dict[str, Any]],
-                             fuel: str,
-                             x_decrease_t: float) -> Tuple[List[Dict[str, Any]], float, float]:
+def _segment_opt_priority(seg: Dict[str, Any]) -> int:
     """
-    Take a deep copy of the current segments, reduce the selected fossil fuel
-    by x tonnes (voyage first, then EU at-berth), and add BIO energy-equivalently.
-    Returns (modified_segments, actual_fossil_decrease_t, bio_increase_t).
+    Priority for where to remove the selected fossil fuel first
+    when performing a HSFO→BIO (or LFO/MGO→BIO) swap.
+
+    Rationale (ETS exposure):
+      0 → Intra-EU voyage      (100% ETS scope)
+      1 → EU at-berth (port)   (100% ETS scope)
+      2 → Cross-border voyages (non-EU→EU, EU→non-EU) → 50% ETS scope
+      3 → Anything else (fallback)
+    """
+    t = seg.get("type", "")
+    if t == "Intra-EU voyage":
+        return 0
+    if t == "EU at-berth (port stay)":
+        return 1
+    if t in ("non-EU→EU voyage", "EU→non-EU voyage"):
+        return 2
+    return 3
+
+def _apply_shift_to_segments(
+    base_segments: List[Dict[str, Any]],
+    fuel: str,
+    x_decrease_t: float
+) -> Tuple[List[Dict[str, Any]], float, float]:
+    """
+    Reduce the selected fossil fuel (HSFO/LFO/MGO) by x tonnes and
+    add BIO energy-equivalently in the *same segments* where the
+    fossil is removed.
+
+    This preserves:
+      • Total energy per segment [MJ]
+      • Overall voyage profile (no artificial energy transfer between segments)
+
+    Returns:
+      (segments_modified, actual_fossil_decrease_t, bio_increase_t)
     """
     segs = copy.deepcopy(base_segments)
     x = max(0.0, float(x_decrease_t))
 
-    # total available of the selected fuel across all segments
-    total_avail = 0.0
-    for seg in segs:
-        total_avail += float(seg.get(f"{fuel}_t", 0.0) or 0.0)
+    # Total available mass of the selected fuel across all segments
+    total_avail = sum(float(seg.get(f"{fuel}_t", 0.0) or 0.0) for seg in segs)
     if total_avail <= 0.0:
         return segs, 0.0, 0.0
 
     x = min(x, total_avail)
     remaining = x
 
-    # 1) reduce from voyage segments (non-berth) first
-    for seg in segs:
-        if seg.get("type") == "EU at-berth (port stay)":
-            continue
-        avail = float(seg.get(f"{fuel}_t", 0.0) or 0.0)
-        if avail <= 0.0 or remaining <= 0.0:
-            continue
-        take = min(avail, remaining)
-        seg[f"{fuel}_t"] = avail - take
-        remaining -= take
-
-    # 2) then from EU-berth segments
-    for seg in segs:
-        if seg.get("type") != "EU at-berth (port stay)":
-            continue
-        avail = float(seg.get(f"{fuel}_t", 0.0) or 0.0)
-        if avail <= 0.0 or remaining <= 0.0:
-            continue
-        take = min(avail, remaining)
-        seg[f"{fuel}_t"] = avail - take
-        remaining -= take
-
-    actual_dec = x - remaining
-    if actual_dec <= 0.0 or LCV_BIO <= 0.0:
-        return segs, 0.0, 0.0
-
-    # Energy-equivalent BIO increase
+    # Select the LCV for the chosen fossil
     if fuel == "HSFO":
         LCV_SEL = LCV_HSFO
     elif fuel == "LFO":
@@ -1295,24 +1295,46 @@ def _apply_shift_to_segments(base_segments: List[Dict[str, Any]],
     else:
         LCV_SEL = LCV_MGO
 
+    if LCV_BIO <= 0.0 or LCV_SEL <= 0.0:
+        # No meaningful energy-based shift possible
+        return segs, 0.0, 0.0
+
+    # Indices sorted by ETS-driven priority (see _segment_opt_priority)
+    indices = list(range(len(segs)))
+    indices.sort(key=lambda i: _segment_opt_priority(segs[i]))
+
+    actual_dec = 0.0
+    total_bio_added = 0.0
+
+    for i in indices:
+        if remaining <= 0.0:
+            break
+
+        seg = segs[i]
+        avail = float(seg.get(f"{fuel}_t", 0.0) or 0.0)
+        if avail <= 0.0:
+            continue
+
+        take = min(avail, remaining)
+        if take <= 0.0:
+            continue
+
+        # 1) Reduce fossil in this segment
+        seg[f"{fuel}_t"] = avail - take
+        remaining -= take
+        actual_dec += take
+
+        # 2) Add BIO in the *same* segment, energy-equivalently
+        bio_add_t = take * (LCV_SEL / LCV_BIO)
+        if bio_add_t > 0.0:
+            seg["BIO_t"] = float(seg.get("BIO_t", 0.0) or 0.0) + bio_add_t
+            total_bio_added += bio_add_t
+
+    if actual_dec <= 0.0:
+        return segs, 0.0, 0.0
+
     bio_inc_t = actual_dec * (LCV_SEL / LCV_BIO)
-    rem_bio = bio_inc_t
-
-    # Prefer EU at-berth segments for new BIO, as in the previous lumped logic
-    berth_segments = [seg for seg in segs if seg.get("type") == "EU at-berth (port stay)"]
-    if berth_segments:
-        seg0 = berth_segments[0]
-        seg0["BIO_t"] = float(seg0.get("BIO_t", 0.0) or 0.0) + rem_bio
-        rem_bio = 0.0
-
-    # If no EU-berth segments, or any remainder, put it into the first non-berth segment
-    if rem_bio > 0.0:
-        non_berth = [seg for seg in segs if seg.get("type") != "EU at-berth (port stay)"]
-        if non_berth:
-            seg0 = non_berth[0]
-            seg0["BIO_t"] = float(seg0.get("BIO_t", 0.0) or 0.0) + rem_bio
-            rem_bio = 0.0
-
+    # total_bio_added should be ≈ bio_inc_t (small numerical differences possible)
     return segs, actual_dec, bio_inc_t
 
 

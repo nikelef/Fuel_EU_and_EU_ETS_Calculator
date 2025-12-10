@@ -614,7 +614,7 @@ with st.sidebar:
     with lcv_c1:
         LCV_HSFO  = float_text_input("HSFO LCV [MJ/t]" , _get(DEFAULTS, "LCV_HSFO" , 40_200.0), key="LCV_HSFO",  min_value=0.0)
     with lcv_c2:
-        LCV_LFO   = float_text_input("LFO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_LFO"  , 42_700.0), key="LCV_LFO",   min_value=0.0)
+        LCV_LFO   = float_text_input("LFO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_LFO"  , 41_200.0), key="LCV_LFO",   min_value=0.0)
     with lcv_c3:
         LCV_MGO   = float_text_input("MGO LCV [MJ/t]"  , _get(DEFAULTS, "LCV_MGO"  , 42_700.0), key="LCV_MGO",   min_value=0.0)
     lcv_c4, lcv_c5 = st.columns(2)

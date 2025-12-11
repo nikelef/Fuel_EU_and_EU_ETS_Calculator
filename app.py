@@ -682,7 +682,25 @@ with st.sidebar:
              "Determines fossil CO₂ emissions under EU ETS."
     )
 
+    # Warn if Fuel to reduce and Bio Mix Type are inconsistent (for blends < 100% BIO)
+    if pure_bio_pct < 100.0:
+        if selected_fuel_for_opt == "HSFO":
+            expected_mix = "BIO/HSFO mix"
+        elif selected_fuel_for_opt == "LFO":
+            expected_mix = "BIO/LFO mix"
+        else:  # selected_fuel_for_opt == "MGO"
+            expected_mix = "BIO/MGO mix"
+
+        if bio_mix_type != expected_mix:
+            st.warning(
+                f"For Fuel to reduce = {selected_fuel_for_opt}, "
+                f"the ETS-consistent Bio Mix Type is '{expected_mix}'. "
+                f"Currently selected: '{bio_mix_type}'.",
+                icon="⚠️",
+            )
+
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 
     # 3) Market prices  (ALL in EUR)

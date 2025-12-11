@@ -2027,38 +2027,44 @@ def _total_cost_for_candidate_premium(
 def _optimized_total_cost_for_year_and_premium(
     year_idx: int,
     bio_premium_eur_per_t_candidate: float,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float]:
     """
     For a given year index and BIO premium [EUR/t], find the optimal fossil→BIO
     shift x [t] (reduce selected fuel, increase BIO energy-equivalently) that
     minimizes the total cost FuelEU + ETS.
 
-    Returns (min_total_cost, x_opt).
+    Returns:
+      (min_total_cost, x_opt, final_balance_tCO2e_opt)
     """
+    base_segments = st.session_state.get("abs_segments", [])
+
     # Total available mass of the selected fuel (voyage + berth)
     if selected_fuel_for_opt == "HSFO":
         total_avail = HSFO_voy_t + HSFO_berth_t
     elif selected_fuel_for_opt == "LFO":
         total_avail = LFO_voy_t + LFO_berth_t
-        # note: LFO_voy_t / LFO_berth_t defined earlier from totals_mass
     else:
         total_avail = MGO_voy_t + MGO_berth_t
 
     # If no fossil available or no BIO LCV, optimization cannot change the mix
     if total_avail <= 0.0 or LCV_BIO <= 0.0:
-        # Cost with current segments and given BIO premium
+        # Cost and final balance with current segments and given BIO premium
         cost_no_shift = _total_cost_for_candidate_premium(
             year_idx,
-            st.session_state.get("abs_segments", []),
+            base_segments,
             bio_premium_eur_per_t_candidate,
         )
-        return cost_no_shift, 0.0
+        _, _, final_bal_no_shift, _ = _scope_and_balance_from_segments(
+            year_idx,
+            base_segments,
+        )
+        return cost_no_shift, 0.0, final_bal_no_shift
 
     x_max = total_avail
 
     def _objective(x: float) -> float:
         segments_mod, _, _ = _apply_shift_to_segments(
-            st.session_state["abs_segments"],
+            base_segments,
             selected_fuel_for_opt,
             x,
         )
@@ -2104,7 +2110,19 @@ def _optimized_total_cost_for_year_and_premium(
 
     x_opt = (a + b) / 2.0
     cost_opt = _objective(x_opt)
-    return cost_opt, x_opt
+
+    # Final FuelEU balance (tCO2e) at optimum, for later €/tCO2e calculation
+    segments_opt, _, _ = _apply_shift_to_segments(
+        base_segments,
+        selected_fuel_for_opt,
+        x_opt,
+    )
+    _, _, final_bal_opt, _ = _scope_and_balance_from_segments(
+        year_idx,
+        segments_opt,
+    )
+
+    return cost_opt, x_opt, final_bal_opt
 
 
 st.markdown("### Interactive simulation: Optimized FuelEU + EU ETS cost     BIO VS Pooling Policy")
@@ -2174,14 +2192,46 @@ else:
         except ValueError:
             year_idx_sim = 0
 
-        # 1) BIO optimization route: for each BIO premium → optimized Total_Cost_FUEL_EU_ETS_Opt
+        # 1) BIO optimization route:
+        #    for each BIO premium → optimized Total_Cost_FUEL_EU_ETS_Opt
+        #    and effective €/tCO2e vs the base (no BIO optimization) case.
+        base_segments = st.session_state.get("abs_segments", [])
+        _, _, final_bal_base_sim, _ = _scope_and_balance_from_segments(
+            year_idx_sim,
+            base_segments,
+        )
+
         cost_opt_grid: List[float] = []
+        delta_cb_grid: List[float] = []                # ΔFinal_Balance_tCO2e (opt − base)
+        effective_eur_per_tco2_bio: List[float] = []   # €/tCO2e for BIO route
+
         for prem in bio_premium_grid:
-            cost_opt, _ = _optimized_total_cost_for_year_and_premium(
+            # Optimized route (BIO optimization)
+            cost_opt, x_opt, final_bal_opt = _optimized_total_cost_for_year_and_premium(
                 year_idx_sim,
                 prem,
             )
             cost_opt_grid.append(cost_opt)
+        
+            # Base route (no BIO shift) at this premium
+            cost_base = _total_cost_for_candidate_premium(
+                year_idx_sim,
+                base_segments,
+                prem,
+            )
+
+            delta_cost = cost_opt - cost_base
+            delta_cb   = final_bal_opt - final_bal_base_sim  # tCO2e improvement due to BIO optimization
+        
+            delta_cb_grid.append(delta_cb)
+            if delta_cb > 0:
+                # Combined €/tCO2e (FuelEU + ETS) for BIO route
+                eff = delta_cost / delta_cb
+            else:
+                eff = 0.0  # no improvement or no scope
+        
+            effective_eur_per_tco2_bio.append(eff)
+
 
         # 2) Pure pooling route:
         #    Use Final_Balance_tCO2e from the first-parameters results table (no extra BIO optimization),
@@ -2206,6 +2256,18 @@ else:
             for prem in bio_premium_grid
         ]
 
+        # Custom data for richer mouse-over tooltips
+        custom_bio = [
+            [effective_eur_per_tco2_bio[i], delta_cb_grid[i]]
+            for i in range(len(bio_premium_grid))
+        ]
+        
+        custom_pooling = [
+            [pooling_price_compare, final_balance_base]
+            for _ in bio_premium_grid
+        ]
+
+
         # Build the interactive graph
         fig_sim = go.Figure()
 
@@ -2215,9 +2277,13 @@ else:
                 y=cost_opt_grid,
                 mode="lines+markers",
                 name="BIO optimization (FuelEU + ETS)",
+                customdata=custom_bio,
                 hovertemplate=(
-                    "Premium = %{x:,.0f} €/t<br>"
-                    "Total cost = %{y:,.0f} EUR<extra></extra>"
+                    "BIO premium: %{x:,.0f} €/t<br>"
+                    "Total cost (BIO optimization): %{y:,.0f} EUR<br>"
+                    "ΔFuelEU final balance: %{customdata[1]:,.1f} tCO₂e<br>"
+                    "Effective cost of BIO route: %{customdata[0]:,.1f} €/tCO₂e"
+                    "<extra></extra>"
                 ),
             )
         )
@@ -2229,9 +2295,13 @@ else:
                 mode="lines",
                 name=f"Pooling only @ {pooling_price_compare:,.0f} €/tCO₂e",
                 line=dict(dash="dash"),
+                customdata=custom_pooling,
                 hovertemplate=(
-                    "Premium = %{x:,.0f} €/t<br>"
-                    "Total cost = %{y:,.0f} EUR<extra></extra>"
+                    "BIO premium: %{x:,.0f} €/t<br>"
+                    "Total cost (Pooling only): %{y:,.0f} EUR<br>"
+                    "FuelEU balance covered by pooling: %{customdata[1]:,.1f} tCO₂e<br>"
+                    "Pooling price: %{customdata[0]:,.1f} €/tCO₂e"
+                    "<extra></extra>"
                 ),
             )
         )

@@ -1230,7 +1230,7 @@ for _, row in LIMITS_DF.iterrows():
 
 # BIO premium & pooling cost series (EUR)
 bio_mass_total_t_base = (totals_mass["intra_voy"]["BIO"] + totals_mass["extra_voy"]["BIO"] + totals_mass["eu_berth"]["BIO"])
-bio_premium_eur_per_t_val = parse_us_any(st.session_state.get("bio_premium_eur_per_t", _get(DEFAULTS,"bio_premium_eur_per_t", _get(DEFAULTS,"bio_premium_usd_per_t",0.0))), 0.0)
+bio_premium_eur_per_t_val = parse_us_any(st.session_state.get("bio_premium_eur_per_t", _get(DEFAULTS,"bio_premium_eur_per_t", _get(DEFAULTS,"bio_premium_usd_per_t",300.0))), 0.0)
 bio_premium_cost_eur_col = [bio_mass_total_t_base * bio_premium_eur_per_t_val] * len(YEARS)
 pooling_price_eur_per_tco2e_val = parse_us_any(st.session_state.get("pooling_price_eur_per_tco2e", _get(DEFAULTS,"pooling_price_eur_per_tco2e",200.0)), 200.0)
 pooling_cost_eur_col = [pool_applied[i] * pooling_price_eur_per_tco2e_val for i in range(len(YEARS))]

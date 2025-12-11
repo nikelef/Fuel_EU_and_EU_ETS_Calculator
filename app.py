@@ -700,7 +700,7 @@ with st.sidebar:
     bio_premium_label = f"Premium BIO vs {selected_fuel_for_opt} [EUR/ton]"
     bio_premium_eur_per_t = float_text_input(
         bio_premium_label,
-        _get(DEFAULTS, "bio_premium_eur_per_t", _get(DEFAULTS, "bio_premium_usd_per_t", 300.0)),
+        _get(DEFAULTS, "bio_premium_eur_per_t", _get(DEFAULTS, "bio_premium_usd_per_t", 0.0)),
         key="bio_premium_eur_per_t", min_value=0.0
     )
 

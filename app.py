@@ -414,7 +414,7 @@ shared_creds_cookie_gate()
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
-st.title("FuelEU Maritime — Voyage Segments — GHG Intensity & Cost  — Bunkers Optimizer")
+st.title("FuelEU & EU ETS Maritime — Voyage Segments — GHG Intensity & Cost  — Bunker Optimizer: Pooling vs Alternative/BIO Fuels")
 #show_trial_header("Nikitas Eleftheriou", "ops@example.com", "1.0", "2025-10-30")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 

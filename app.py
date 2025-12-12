@@ -1720,14 +1720,12 @@ for y in YEARS:
     ETS_Cost_EUR_series.append((co2e_geo_t * cov) * eua_price_eur_per_tco2)
 
 
-
-
 def _ets_cost_from_segments(
     segments: List[Dict[str, Any]],
     pure_bio_pct: float,
     bio_mix_type: str,
     eua_price_eur_per_tco2: float,
-    year: int,
+    year: int | str,
 ) -> float:
     """
     EU ETS cost [EUR] from a given list of segments:
@@ -1736,6 +1734,19 @@ def _ets_cost_from_segments(
       • Coverage factor by year
       • 2025: CO2 only; 2026+: CO2e (CO2+CH4+N2O)
     """
+
+    # --- NEW: coerce year safely (handles "2025", "2026+", etc.) ---
+    if isinstance(year, str):
+        y = year.strip()
+        if y.endswith("+"):
+            y = y[:-1]
+        try:
+            year_i = int(y)
+        except Exception:
+            year_i = 2025
+    else:
+        year_i = int(year)
+
     totals_mass_local = {
         "intra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
         "extra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
@@ -1756,9 +1767,9 @@ def _ets_cost_from_segments(
     ets_masses_local = _ets_in_scope_masses(totals_mass_local, pure_bio_pct, bio_mix_type)
 
     # CO2e in geographic scope
-    _, _, _, co2e_geo_t = ets_geo_emissions_tco2e(ets_masses_local, year)
+    _, _, _, co2e_geo_t = ets_geo_emissions_tco2e(ets_masses_local, year_i)
 
-    cov = ets_coverage_factor(year)
+    cov = ets_coverage_factor(year_i)
     return (co2e_geo_t * cov) * eua_price_eur_per_tco2
 
 
@@ -2039,7 +2050,7 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            eua_year_selection,
+            year=YEARS[i],
         )
 
         penalties_eur_opt_col.append(penalties_eur_opt)

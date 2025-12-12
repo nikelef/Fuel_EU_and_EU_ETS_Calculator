@@ -2397,5 +2397,5 @@ st.download_button(
     mime="text/csv",
 )
 st.info("Public demo — non-production. Results are informational; no warranty.", icon="ℹ️")
-show_trial_footer("Nikitas Eleftheriou", "1.0", "2025-10-30")
+show_trial_footer("Nikitas Eleftheriou", "1.1", "2025-12-12")
 st.caption("Built with Streamlit • Hosting on Streamlit Community Cloud. By using this app you also accept Streamlit’s Terms and Privacy.")

@@ -1941,8 +1941,11 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            year=YEARS[i],
+            year=YEARS[year_idx],
         )
+
+
+
 
         # 5) Objective: FuelEU + ETS total cost
         return (
@@ -2187,8 +2190,9 @@ def _total_cost_for_candidate_premium(
         pure_bio_pct,
         bio_mix_type,
         eua_price_eur_per_tco2,
-        eua_year_selection,
+        year=YEARS[year_idx],
     )
+
 
     # Total cost = FuelEU (penalty − credit + BIO premium + pooling) + ETS
     return penalty_eur_x - credits_eur_x + bio_premium_cost_x + pooling_cost_x + ets_cost_eur_x

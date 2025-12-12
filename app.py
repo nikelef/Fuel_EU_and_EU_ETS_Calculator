@@ -419,57 +419,185 @@ st.title("FuelEU & EU ETS Maritime — Voyage Segments — GHG Intensity & Cost 
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Drop-in replacement for the "Methodology & Units" expander (proper math)
+# Methodology & Units — aligned to full code scope (FuelEU + EU ETS + Optimizer)
 # ──────────────────────────────────────────────────────────────────────────────
 with st.expander("Methodology & Units", expanded=False):
     st.markdown("""
-- **Units:** Mass [t]; Energy [MJ] via LCV [MJ/t]; WtW [gCO₂e/MJ]; Electricity: kWh→MJ × 3.6; all costs in **EUR**.
-- **Per-segment scope:** Intra-EU = 100%; EU at-berth = 100% + OPS (MJ);
-  Cross-border = 50% each fuel (prioritized allocation **OFF**) or a 50% pool filled by ascending WtW across **all** fuels (prioritized allocation **ON**).
-- **Combined basis:** Sum **per-segment in-scope** energies (OPS only from EU-berth); no extra global pooling for intensity.
+### Units
+- **Fuel mass:** tonnes **[t]**  
+- **Fuel energy:** **[MJ]** via **LCV [MJ/t]**  
+- **Electricity (OPS):** **kWh → MJ** using **1 kWh = 3.6 MJ** (EU at-berth only)  
+- **WtW intensity:** **[gCO₂e/MJ]**  
+- **FuelEU balance:** **[tCO₂e]**  
+- **EU ETS emissions:** **[tCO₂]** (Tank-to-Wake, fossil portion only)  
+- **All costs:** **EUR**
+
+---
+
+### Energy conversion
+""")
+    st.latex(r"E_f = m_f \cdot \text{LCV}_f")
+    st.latex(r"E_{\text{OPS}}[\text{MJ}] = E_{\text{OPS}}[\text{kWh}]\cdot 3.6")
+
+    st.markdown("""
+---
+
+### Per-segment in-scope energy (FuelEU scope)
+For each segment, the app computes **All energy** and **In-scope energy**:
+
+- **Intra-EU voyage:** 100% of each fuel’s energy is in scope.  
+- **EU at-berth (port stay):** 100% of each fuel’s energy is in scope **plus OPS electricity (100%)**.  
+- **Cross-border (EU→non-EU, non-EU→EU):**
+  - If **Apply prioritized allocation = OFF**: each fuel is simply **50% in scope**.
+  - If **Apply prioritized allocation = ON**: a **pool equal to 50% of total segment fuel energy** is formed and filled by **ascending WtW across all fuels** (RFNBO, BIO, HSFO, LFO, MGO) until the pool is full.
+
+> Note: OPS electricity does **not** appear in voyage segments. Electricity has WtW = 0 in the app.
 """)
 
-    st.markdown("**Attained intensity (per year \\(y\\))**:")
+    st.markdown("""
+---
+
+### Combined in-scope mix and “global WtW re-arrangement”
+After summing the **per-segment in-scope** energies into a combined in-scope stack:
+
+- If **at least one cross-border segment has prioritized allocation ON**, the app applies a **global WtW-prioritized re-allocation** on the *combined in-scope fuels only*:
+  - **Total in-scope energy (including OPS)** is kept unchanged.
+  - **Electricity stays fixed**.
+  - Fuel in-scope energy is reassigned across fuels by ascending WtW, **capped by 100% of each fuel’s total (all-segments) energy**.
+
+This global re-arranged combined in-scope mix is what drives the **attained intensity and all FuelEU costs**.
+""")
+
+    st.markdown("**Attained WtW intensity (year \\(y\\))**:")
     st.latex(
-        r"I_{\text{att}}(y)=\frac{\sum_{f} I_f \, E^{\text{scope}}_{f}}{E^{\text{scope}}_{\text{total}}+(r(y)-1)\,E^{\text{scope}}_{\text{RFNBO}}}"
+        r"I_{\text{att}}(y)=\frac{\sum_{k\in\{HSFO,LFO,MGO,BIO,RFNBO,ELEC\}} I_k \, E^{\text{scope}}_{k}}"
+        r"{E^{\text{scope}}_{\text{total}}+(r(y)-1)\,E^{\text{scope}}_{\text{RFNBO}}}"
     )
-    st.markdown(
-        "where $I_f$ is WtW intensity [gCO$_2$e/MJ], "
-        "$E^{\\text{scope}}_{f}$ is in-scope energy [MJ], electricity has $I_{\\text{ELEC}}=0$, and:"
-    )
+    st.markdown("**RFNBO reward factor**:")
     st.latex(r"r(y)=\begin{cases}2,& y\le 2033\\[4pt]1,& y\ge 2034\end{cases}")
 
-    st.markdown("**Compliance balance (tCO₂e)**:")
+    st.markdown("""
+---
+
+### FuelEU compliance balance (tCO₂e), carry-in, pooling, banking
+First compute the raw compliance balance:
+""")
     st.latex(
         r"CB_{\text{raw}}(y)=\frac{\big(I_{\text{limit}}(y)-I_{\text{att}}(y)\big)\cdot E^{\text{scope}}_{\text{total}}}{10^{6}}"
     )
-    st.markdown("Apply carry-in, pooling (uptake + / provide −), and banking (capped by surplus):")
+    st.markdown("""
+Then apply **carry-in** (banked from prior year), **pooling**, and **banking**:
+""")
     st.latex(
-        r"CB_{\text{final}}(y)=CB_{\text{raw}}(y)+\text{CarryIn}(y)+\text{Pooling}(y)-\text{Banked}(y)"
+        r"CB_{\text{eff}}(y)=CB_{\text{raw}}(y)+\text{CarryIn}(y)"
+    )
+    st.latex(
+        r"CB_{\text{final}}(y)=CB_{\text{eff}}(y)+\text{PoolingApplied}(y)-\text{BankedToNext}(y)"
     )
 
-    st.markdown("**Penalty multiplier (constant within step)** — applied only if $CB_{\\text{final}}(y)<0$:")
-    st.latex(r"M_{\text{step}}=1+0.10\cdot(s-1)")
-    st.markdown("where $s$ is the **Consecutive deficit years (seed)** for that step.")
+    st.markdown("""
+**Pooling sign convention (as implemented):**
+- Pooling input **≥ 0** means **uptake** (can only cover a deficit; capped by current deficit).
+- Pooling input **< 0** means **provide** (can only be provided from a surplus; capped by current surplus).
 
-    st.markdown("**Cost model (EUR)**:")
-    st.latex(
-        r"\text{NetTotalCost}(y)=\text{Penalty}(y)-\text{Credits}(y)+\text{BIO Premium}(y)+\text{Pooling Cost}(y)"
-    )
-    st.markdown(
-        "Penalty uses the €/VLSFO-eq t input converted via the attained mix (€/tCO₂e). "
-        "Credits use the €/tCO₂e input. BIO premium = BIO mass [t] × €/t. "
-        "Pooling cost = applied tCO₂e × €/tCO₂e."
-    )
+**Banking (as implemented):**
+- Banking is capped by the current surplus and becomes **next year’s carry-in**.
+- A safety clamp prevents ending “more negative” just because banking/providing was over-applied.
+""")
 
-    st.markdown("**Optimizer (per year)**:")
+    st.markdown("""
+---
+
+### FuelEU penalty multiplier (constant within each step if deficit)
+If the year ends with a **deficit** (negative final balance), a step-constant multiplier is applied:
+""")
+    st.latex(r"M_{\text{step}}=1+0.10\cdot(\text{Seed}-1)")
+    st.markdown("""
+Where **Seed = “Consecutive deficit years (seed)”** from the sidebar and the multiplier is held constant per regulatory step period in the results loop.
+""")
+
+    st.markdown("""
+---
+
+### Converting tCO₂e ↔ €/VLSFO-eq t (used by penalty)
+The app converts a tCO₂e deficit to an equivalent **VLSFO-eq tonnes** using the attained intensity and an energy reference of **41,000 MJ/t**:
+""")
+    st.latex(r"\text{tCO₂e per VLSFO-eq t}=\frac{I_{\text{att}}\cdot 41{,}000}{10^{6}}")
+    st.markdown("""
+Then:
+- **Penalty (EUR)** uses the user input **€/VLSFO-eq t** times the computed VLSFO-eq tonnes, times the step multiplier (if in deficit).
+- **Credits (EUR)** use **€/tCO₂e** times positive balance (if in surplus).
+""")
+
+    st.markdown("""
+---
+
+### FuelEU cost model (EUR) used in the results table
+""")
     st.latex(
-        r"\Delta m_{\text{BIO}}=x\cdot\frac{\text{LCV}_{\text{fossil}}}{\text{LCV}_{\text{BIO}}},\qquad x\in\big[0,\,m_{\text{fossil,voy}}+m_{\text{fossil,berth}}\big]"
+        r"\text{Net\_Total\_Cost}(y)=\text{Penalty}(y)-\text{Credit}(y)+\text{BIO\_Premium}(y)+\text{Pooling\_Cost}(y)"
     )
-    st.markdown(
-        "Reduce the selected fossil by $x$ tonnes (voyage first, then berth) and increase BIO energy-equivalently. "
-        "Evaluate with the pooled allocator and search $x$ that minimizes $\\text{NetTotalCost}(y)$."
-    )
+    st.markdown("""
+Where:
+- **BIO_Premium(y)** = (total BIO tonnes in all segments) × (Premium BIO vs selected fossil)  
+- **Pooling_Cost(y)** = PoolingApplied(y) × Pooling price [€/tCO₂e]
+""")
+
+    st.markdown("""
+---
+
+### EU ETS (shipping) — scope, BIO blend fossil share, emissions, cost
+EU ETS in-scope masses are computed from **segment masses**:
+- **Intra-EU:** 100%  
+- **EU at-berth:** 100%  
+- **Cross-border EU↔non-EU:** 50%
+
+BIO is treated as a **delivered blend**:
+- Pure BIO fraction = **Pure BIO in the blend mix (%)** → **0 ETS**
+- Fossil share = remaining % → assigned to the fossil of **Bio Mix Type** (BIO/HSFO, BIO/LFO, BIO/MGO)
+
+Tank-to-wake emission factors used (tCO₂ per t fuel):
+- HSFO: 3.114  
+- LFO:  3.151  
+- MGO:  3.206
+
+Coverage factor:
+- **2025:** 70%  
+- **2026+:** 100%
+
+EU ETS cost:
+""")
+    st.latex(r"\text{ETS\_Cost}=\text{ETS\_Emissions}[tCO_2]\cdot \text{EUA\_Price}\,[€/tCO_2]")
+
+    st.markdown("""
+---
+
+### Optimizer objective (per year): minimize **FuelEU + EU ETS**
+For each year, the optimizer searches a fossil-to-BIO shift **x [t]**:
+- Reduce the selected fossil (HSFO/LFO/MGO) segment-by-segment (priority: Intra-EU → EU berth → cross-border).
+- Add BIO **in the same segments** energy-equivalently:
+""")
+    st.latex(r"\Delta m_{\text{BIO}}=x\cdot\frac{\text{LCV}_{\text{fossil}}}{\text{LCV}_{\text{BIO}}}")
+    st.markdown("""
+Objective evaluated for each candidate x:
+- FuelEU: penalty − credits + pooling cost + BIO premium
+- **Plus EU ETS cost recomputed on the candidate segments mix** (including BIO fossil share per blend settings)
+
+The optimizer uses a **coarse grid** scan then a **golden-section refinement**.
+""")
+
+    st.markdown("""
+---
+
+### Interactive simulation: “BIO optimization vs Pooling only”
+For a selected year and a BIO premium range:
+- **BIO optimization curve:** runs the same “minimize FuelEU+ETS” optimization for each premium, with **pooling cost forced to 0** inside that simulation’s BIO route.
+- **Pooling-only curve:** uses the **base-case** Final_Balance_tCO₂e (from first parameters) and assumes it is fully compensated by pooling at the user’s comparison price:
+  - Pooling cost component = − Final_Balance × PoolingPriceCompare
+  - Total = base ETS cost + (base BIO tonnes × premium) + pooling cost component
+
+(So the pooling-only curve is a policy comparison construct, not the full FuelEU penalty/credit mechanics.)
+""")
 
 # Sidebar CSS (compact), top metric smaller value text
 st.markdown("""

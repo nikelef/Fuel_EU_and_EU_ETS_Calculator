@@ -1883,6 +1883,7 @@ penalty_vlsfo_opt = parse_us_any(
 
 dec_opt_list, bio_inc_opt_list = [], []
 for i in range(len(YEARS)):
+    year_i = YEARS[i]   # <-- ADD THIS LINE (freeze year for this iteration)
     if selected_fuel_for_opt == "HSFO":
         total_avail, LCV_SEL = HSFO_voy_t + HSFO_berth_t, LCV_HSFO
     elif selected_fuel_for_opt == "LFO":
@@ -1941,7 +1942,7 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            year=YEARS[year_idx],
+            year=year_i,   # <-- REPLACE YEARS[year_idx] with year_i
         )
 
 

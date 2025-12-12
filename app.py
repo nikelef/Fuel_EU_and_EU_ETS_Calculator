@@ -415,7 +415,7 @@ shared_creds_cookie_gate()
 # UI
 # ──────────────────────────────────────────────────────────────────────────────
 st.title("FuelEU & EU ETS Maritime — Voyage Segments — GHG Intensity & Cost  — Cost Optimizer: Pooling compared to Bunkering Optimization with Alternative Fuels (ex. BIO/RFNBO/other)")
-#show_trial_header("Nikitas Eleftheriou", "ops@example.com", "1.0", "2025-10-30")
+#show_trial_header("Nikitas Eleftheriou", "ops@example.com", "1.1", "2025-12-12")
 st.caption("2025–2050 • Limits from 2020 baseline 91.16 gCO₂e/MJ • WtW • Prices in EUR")
 
 # ──────────────────────────────────────────────────────────────────────────────

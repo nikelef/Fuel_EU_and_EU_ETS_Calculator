@@ -1608,60 +1608,6 @@ EF_HSFO_tco2_per_t = 3.114  # residual / HFO
 EF_LFO_tco2_per_t  = 3.151  # typical light fuel oil
 EF_MGO_tco2_per_t  = 3.206  # marine gas oil / diesel
 
-# ── NEW: from 2026 EU ETS maritime includes CH4 + N2O (CO2e) ──
-# GWP100 for CO2e conversion
-GWP_CH4 = 28.0
-GWP_N2O = 265.0
-
-# Default non-CO2 TTW factors [t gas / t fuel] (keep as constants or expose to UI later)
-EF_HSFO_tch4_per_t = 0.00005
-EF_LFO_tch4_per_t  = 0.00005
-EF_MGO_tch4_per_t  = 0.00005
-
-EF_HSFO_tn2o_per_t = 0.00018
-EF_LFO_tn2o_per_t  = 0.00018
-EF_MGO_tn2o_per_t  = 0.00018
-
-def ets_coverage_factor(year: int) -> float:
-    # Phase-in for shipping (you start at 2025 anyway):
-    # 2024: 40%, 2025: 70%, 2026+: 100%
-    if year <= 2024:
-        return 0.40
-    if year == 2025:
-        return 0.70
-    return 1.00
-
-def ets_geo_emissions_tco2e(ets_masses: Dict[str, float], year: int) -> Tuple[float, float, float, float]:
-    """
-    Returns (CO2_t, CH4_t, N2O_t, CO2e_t) in geographic scope (before coverage factor).
-    2025: CO2 only. 2026+: CO2e = CO2 + CH4*GWP_CH4 + N2O*GWP_N2O.
-    """
-    co2_t = (
-        ets_masses["HSFO"] * EF_HSFO_tco2_per_t +
-        ets_masses["LFO"]  * EF_LFO_tco2_per_t  +
-        ets_masses["MGO"]  * EF_MGO_tco2_per_t
-    )
-
-    if year >= 2026:
-        ch4_t = (
-            ets_masses["HSFO"] * EF_HSFO_tch4_per_t +
-            ets_masses["LFO"]  * EF_LFO_tch4_per_t  +
-            ets_masses["MGO"]  * EF_MGO_tch4_per_t
-        )
-        n2o_t = (
-            ets_masses["HSFO"] * EF_HSFO_tn2o_per_t +
-            ets_masses["LFO"]  * EF_LFO_tn2o_per_t  +
-            ets_masses["MGO"]  * EF_MGO_tn2o_per_t
-        )
-        co2e_t = co2_t + ch4_t * GWP_CH4 + n2o_t * GWP_N2O
-    else:
-        ch4_t = 0.0
-        n2o_t = 0.0
-        co2e_t = co2_t
-
-    return co2_t, ch4_t, n2o_t, co2e_t
-
-
 def _ets_in_scope_masses(totals_mass: Dict[str, Dict[str, float]],
                          pure_bio_pct: float,
                          bio_mix_type: str) -> Dict[str, float]:
@@ -1709,44 +1655,39 @@ def _ets_in_scope_masses(totals_mass: Dict[str, Dict[str, float]],
 # Compute in-scope masses using current UI inputs
 ets_masses = _ets_in_scope_masses(totals_mass, pure_bio_pct, bio_mix_type)
 
-# ── ETS emissions/cost PER YEAR (2025–2050); 2026+ includes CH4+N2O as CO2e ──
-ETS_Emissions_tCO2e_series: List[float] = []
-ETS_Cost_EUR_series: List[float] = []
+# Raw ETS emissions in geographic scope [tCO2]
+ets_emissions_geo_tco2 = (
+    ets_masses["HSFO"] * EF_HSFO_tco2_per_t +
+    ets_masses["LFO"]  * EF_LFO_tco2_per_t  +
+    ets_masses["MGO"]  * EF_MGO_tco2_per_t
+)
 
-for y in YEARS:
-    _, _, _, co2e_geo_t = ets_geo_emissions_tco2e(ets_masses, y)  # geo scope, before coverage
-    cov = ets_coverage_factor(y)
-    ETS_Emissions_tCO2e_series.append(co2e_geo_t * cov)
-    ETS_Cost_EUR_series.append((co2e_geo_t * cov) * eua_price_eur_per_tco2)
+# Coverage factor per EU ETS phase (shipping):
+# 2025 → 70% of emissions; 2026+ → 100% (your UI has only these two options)
+if eua_year_selection == "2025":
+    ets_coverage_factor = 0.70
+else:  # "2026+" and any other future default
+    ets_coverage_factor = 1.00
 
+ETS_Emissions_tCO2 = ets_emissions_geo_tco2 * ets_coverage_factor
 
+# EUAs cost [EUR] for the selected year and EUA price
+ETS_Cost_EUR_single = ETS_Emissions_tCO2 * eua_price_eur_per_tco2
 def _ets_cost_from_segments(
     segments: List[Dict[str, Any]],
     pure_bio_pct: float,
     bio_mix_type: str,
     eua_price_eur_per_tco2: float,
-    year: int | str,
+    eua_year_selection: str,
 ) -> float:
     """
-    EU ETS cost [EUR] from a given list of segments:
-      • 100% intra-EU + 100% EU at-berth + 50% extra-EU
-      • BIO fossil share handled via Bio Mix Type
-      • Coverage factor by year
-      • 2025: CO2 only; 2026+: CO2e (CO2+CH4+N2O)
+    Recompute EU ETS cost [EUR] from a given list of segments:
+      • 100% of intra-EU voyages and EU at-berth
+      • 50% of extra-EU voyages (EU↔non-EU)
+      • BIO: split into pure BIO (0 ETS) and fossil share according to Bio Mix Type
+      • Apply same coverage factor logic as the main ETS block.
     """
-
-    # --- NEW: coerce year safely (handles "2025", "2026+", etc.) ---
-    if isinstance(year, str):
-        y = year.strip()
-        if y.endswith("+"):
-            y = y[:-1]
-        try:
-            year_i = int(y)
-        except Exception:
-            year_i = 2025
-    else:
-        year_i = int(year)
-
+    # Build a totals_mass-like structure (only HSFO/LFO/MGO/BIO are relevant for ETS)
     totals_mass_local = {
         "intra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
         "extra_voy": {f: 0.0 for f in ["HSFO", "LFO", "MGO", "BIO"]},
@@ -1764,13 +1705,28 @@ def _ets_cost_from_segments(
         for f in ["HSFO", "LFO", "MGO", "BIO"]:
             totals_mass_local[bucket][f] += float(seg.get(f"{f}_t", 0.0) or 0.0)
 
+    # Reuse the existing in-scope logic
     ets_masses_local = _ets_in_scope_masses(totals_mass_local, pure_bio_pct, bio_mix_type)
 
-    # CO2e in geographic scope
-    _, _, _, co2e_geo_t = ets_geo_emissions_tco2e(ets_masses_local, year_i)
+    # Tank-to-wake emissions [tCO2]
+    ets_emissions_geo_tco2_x = (
+        ets_masses_local["HSFO"] * EF_HSFO_tco2_per_t +
+        ets_masses_local["LFO"]  * EF_LFO_tco2_per_t  +
+        ets_masses_local["MGO"]  * EF_MGO_tco2_per_t
+    )
 
-    cov = ets_coverage_factor(year_i)
-    return (co2e_geo_t * cov) * eua_price_eur_per_tco2
+    # Coverage factor per EU ETS phase (same logic as base case)
+    if eua_year_selection == "2025":
+        coverage_factor_x = 0.70
+    else:
+        coverage_factor_x = 1.00
+
+    ETS_Emissions_tCO2_x = ets_emissions_geo_tco2_x * coverage_factor_x
+    ETS_Cost_EUR_x = ETS_Emissions_tCO2_x * eua_price_eur_per_tco2
+    return ETS_Cost_EUR_x
+
+
+
 
 
 def scoped_and_intensity_from_masses(h_v, l_v, m_v, b_v, r_v, h_b, l_b, m_b, b_b, r_b, elec_MJ, wtw_dict, year) -> Tuple[float,float,float]:
@@ -1883,7 +1839,6 @@ penalty_vlsfo_opt = parse_us_any(
 
 dec_opt_list, bio_inc_opt_list = [], []
 for i in range(len(YEARS)):
-    year_i = YEARS[i]   # <-- ADD THIS LINE (freeze year for this iteration)
     if selected_fuel_for_opt == "HSFO":
         total_avail, LCV_SEL = HSFO_voy_t + HSFO_berth_t, LCV_HSFO
     elif selected_fuel_for_opt == "LFO":
@@ -1942,11 +1897,8 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            year=year_i,   # <-- REPLACE YEARS[year_idx] with year_i
+            eua_year_selection,
         )
-
-
-
 
         # 5) Objective: FuelEU + ETS total cost
         return (
@@ -2009,7 +1961,7 @@ for i in range(len(YEARS)):
         bio_premium_eur_opt = bio_premium_cost_eur_col[i]
         credits_eur_opt = credits_eur[i]
         pooling_cost_eur_opt = pooling_cost_eur_col[i]
-        ets_cost_eur_opt = ETS_Cost_EUR_series[i]  # base ETS for that year
+        ets_cost_eur_opt = ETS_Cost_EUR_single  # same ETS as base case
 
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
@@ -2054,7 +2006,7 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            year=YEARS[i],
+            eua_year_selection,
         )
 
         penalties_eur_opt_col.append(penalties_eur_opt)
@@ -2101,15 +2053,17 @@ df_cost = pd.DataFrame({
 # Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost
 # and add combined FuelEU + EU ETS cost
 # ──────────────────────────────────────────────────────────────────────────────
-ets_emissions_series = ETS_Emissions_tCO2e_series
-ets_cost_series      = ETS_Cost_EUR_series
+ets_emissions_series = [ETS_Emissions_tCO2] * len(YEARS)
+ets_cost_series      = [ETS_Cost_EUR_single] * len(YEARS)
+
+# Position: right after Net_Total_Cost_EUR
+insert_pos = list(df_cost.columns).index("Net_Total_Cost_EUR") + 1
 
 # 1) ETS columns (light blue)
-df_cost.insert(insert_pos, "ETS_Emissions_tCO2e", ets_emissions_series)
+df_cost.insert(insert_pos, "ETS_Emissions_tCO2", ets_emissions_series)
 insert_pos += 1
 df_cost.insert(insert_pos, "ETS_Cost_EUR", ets_cost_series)
 insert_pos += 1
-
 
 # 2) Combined FuelEU + EU ETS cost (between ETS_Cost_EUR and *_decrease column)
 fuel_eu_plus_ets_series = [
@@ -2125,7 +2079,7 @@ for col in df_fmt.columns:
 
 def _highlight_ets_columns(col):
     """Give ETS and combined-cost columns distinct background colors."""
-    if col.name in ["ETS_Emissions_tCO2e", "ETS_Cost_EUR"]:
+    if col.name in ["ETS_Emissions_tCO2", "ETS_Cost_EUR"]:
         # EU ETS columns: light blue
         return ["background-color: #e0f2fe; font-weight: 600;"] * len(col)
     if col.name == "FuelEU_+_EU_ETS_Cost":
@@ -2191,9 +2145,8 @@ def _total_cost_for_candidate_premium(
         pure_bio_pct,
         bio_mix_type,
         eua_price_eur_per_tco2,
-        year=YEARS[year_idx],
+        eua_year_selection,
     )
-
 
     # Total cost = FuelEU (penalty − credit + BIO premium + pooling) + ETS
     return penalty_eur_x - credits_eur_x + bio_premium_cost_x + pooling_cost_x + ets_cost_eur_x
@@ -2367,7 +2320,7 @@ else:
             ets_cost_base = float(row_sim["ETS_Cost_EUR"])
         except (IndexError, KeyError):
             final_balance_base = 0.0
-            ets_cost_base = ETS_Cost_EUR_series[year_idx_sim]
+            ets_cost_base = ETS_Cost_EUR_single
 
         # Pooling component: pool_use = −Final_Balance ⇒ cost = pool_use * price = −Final_Balance * price
         pooling_cost_component = -final_balance_base * pooling_price_compare

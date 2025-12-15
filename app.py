@@ -1673,6 +1673,16 @@ ETS_Emissions_tCO2 = ets_emissions_geo_tco2 * ets_coverage_factor
 
 # EUAs cost [EUR] for the selected year and EUA price
 ETS_Cost_EUR_single = ETS_Emissions_tCO2 * eua_price_eur_per_tco2
+
+# ETS varies by year due to coverage factor (2025=70%, 2026+=100%)
+ets_emissions_series = []
+ets_cost_series = []
+for y in YEARS:
+    cov = 0.70 if int(y) == 2025 else 1.00
+    em_y = ets_emissions_geo_tco2 * cov
+    ets_emissions_series.append(em_y)
+    ets_cost_series.append(em_y * eua_price_eur_per_tco2)
+
 def _ets_cost_from_segments(
     segments: List[Dict[str, Any]],
     pure_bio_pct: float,
@@ -1826,7 +1836,7 @@ def masses_after_shift_generic(fuel: str, x_decrease_t: float) -> Tuple[float,fl
 
 # Optimizer search (coarse + fine)
 # ---- OPTIMIZER CHANGE 2: include credits and pooling cost in candidate evaluation
-credit_per_tco2e_val_opt = parse_us_any(st.session_state.get("credit_per_tco2e_str", _get(DEFAULTS,"credit_per_tco2e",200.0)), 200.0)
+
 
 # Optimizer search — finer: dense grid + golden-section, and full cost (penalty − credits + pooling + bio premium)
 credit_per_tco2e_val_opt = parse_us_any(
@@ -2054,14 +2064,7 @@ df_cost = pd.DataFrame({
 # Insert EU ETS columns between Net_Total_Fuel_EU_Cost_EUR and *_decrease(t)_for_Opt_Cost
 # and add combined FuelEU + EU ETS cost
 # ──────────────────────────────────────────────────────────────────────────────
-# ETS varies by year due to coverage factor (2025=70%, 2026+=100%)
-ets_emissions_series = []
-ets_cost_series = []
-for y in YEARS:
-    cov = 0.70 if int(y) == 2025 else 1.00
-    em_y = ets_emissions_geo_tco2 * cov
-    ets_emissions_series.append(em_y)
-    ets_cost_series.append(em_y * eua_price_eur_per_tco2)
+
 
 # Position: right after Net_Total_Fuel_EU_Cost_EUR
 insert_pos = list(df_cost.columns).index("Net_Total_Fuel_EU_Cost_EUR") + 1

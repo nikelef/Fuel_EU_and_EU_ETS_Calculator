@@ -2044,14 +2044,14 @@ df_cost = pd.DataFrame({
     "Penalty_EUR": penalties_eur,
     "Credit_EUR": credits_eur,
     "BIO Premium Cost_EUR": bio_premium_cost_eur_col,
-    "Net_Total_Cost_EUR": net_total_cost_eur_col,
+    "Net_Total_Fuel_EU_Cost_EUR": net_total_cost_eur_col,
 
     decrease_col_name: dec_opt_list,
     "BIO_Increase(t)_For_Opt_Cost": bio_inc_opt_list,
     "Total_Cost_FUEL_EU_ETS_Opt": total_cost_eur_opt_col,
 })
 # ──────────────────────────────────────────────────────────────────────────────
-# Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost
+# Insert EU ETS columns between Net_Total_Fuel_EU_Cost_EUR and *_decrease(t)_for_Opt_Cost
 # and add combined FuelEU + EU ETS cost
 # ──────────────────────────────────────────────────────────────────────────────
 # ETS varies by year due to coverage factor (2025=70%, 2026+=100%)
@@ -2063,8 +2063,8 @@ for y in YEARS:
     ets_emissions_series.append(em_y)
     ets_cost_series.append(em_y * eua_price_eur_per_tco2)
 
-# Position: right after Net_Total_Cost_EUR
-insert_pos = list(df_cost.columns).index("Net_Total_Cost_EUR") + 1
+# Position: right after Net_Total_Fuel_EU_Cost_EUR
+insert_pos = list(df_cost.columns).index("Net_Total_Fuel_EU_Cost_EUR") + 1
 
 # 1) ETS columns (light blue)
 df_cost.insert(insert_pos, "ETS_Emissions_tCO2", ets_emissions_series)

@@ -1678,8 +1678,9 @@ def _ets_cost_from_segments(
     pure_bio_pct: float,
     bio_mix_type: str,
     eua_price_eur_per_tco2: float,
-    eua_year_selection: str,
+    year: int,
 ) -> float:
+
     """
     Recompute EU ETS cost [EUR] from a given list of segments:
       • 100% of intra-EU voyages and EU at-berth
@@ -1715,11 +1716,9 @@ def _ets_cost_from_segments(
         ets_masses_local["MGO"]  * EF_MGO_tco2_per_t
     )
 
-    # Coverage factor per EU ETS phase (same logic as base case)
-    if eua_year_selection == "2025":
-        coverage_factor_x = 0.70
-    else:
-        coverage_factor_x = 1.00
+    # Coverage factor per EU ETS phase (by actual year)
+    coverage_factor_x = 0.70 if int(year) == 2025 else 1.00
+
 
     ETS_Emissions_tCO2_x = ets_emissions_geo_tco2_x * coverage_factor_x
     ETS_Cost_EUR_x = ETS_Emissions_tCO2_x * eua_price_eur_per_tco2
@@ -1897,8 +1896,9 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            eua_year_selection,
+            YEARS[i],
         )
+
 
         # 5) Objective: FuelEU + ETS total cost
         return (
@@ -1961,7 +1961,8 @@ for i in range(len(YEARS)):
         bio_premium_eur_opt = bio_premium_cost_eur_col[i]
         credits_eur_opt = credits_eur[i]
         pooling_cost_eur_opt = pooling_cost_eur_col[i]
-        ets_cost_eur_opt = ETS_Cost_EUR_single  # same ETS as base case
+        ets_cost_eur_opt = ets_cost_series[i]  # base ETS for that year (coverage-aware)
+
 
         penalties_eur_opt_col.append(penalties_eur_opt)
         bio_premium_cost_eur_opt_col.append(bio_premium_eur_opt)
@@ -2006,7 +2007,7 @@ for i in range(len(YEARS)):
             pure_bio_pct,
             bio_mix_type,
             eua_price_eur_per_tco2,
-            eua_year_selection,
+            YEARS[i],
         )
 
         penalties_eur_opt_col.append(penalties_eur_opt)
@@ -2053,8 +2054,14 @@ df_cost = pd.DataFrame({
 # Insert EU ETS columns between Net_Total_Cost_EUR and *_decrease(t)_for_Opt_Cost
 # and add combined FuelEU + EU ETS cost
 # ──────────────────────────────────────────────────────────────────────────────
-ets_emissions_series = [ETS_Emissions_tCO2] * len(YEARS)
-ets_cost_series      = [ETS_Cost_EUR_single] * len(YEARS)
+# ETS varies by year due to coverage factor (2025=70%, 2026+=100%)
+ets_emissions_series = []
+ets_cost_series = []
+for y in YEARS:
+    cov = 0.70 if int(y) == 2025 else 1.00
+    em_y = ets_emissions_geo_tco2 * cov
+    ets_emissions_series.append(em_y)
+    ets_cost_series.append(em_y * eua_price_eur_per_tco2)
 
 # Position: right after Net_Total_Cost_EUR
 insert_pos = list(df_cost.columns).index("Net_Total_Cost_EUR") + 1
@@ -2145,8 +2152,9 @@ def _total_cost_for_candidate_premium(
         pure_bio_pct,
         bio_mix_type,
         eua_price_eur_per_tco2,
-        eua_year_selection,
+        YEARS[year_idx],
     )
+
 
     # Total cost = FuelEU (penalty − credit + BIO premium + pooling) + ETS
     return penalty_eur_x - credits_eur_x + bio_premium_cost_x + pooling_cost_x + ets_cost_eur_x

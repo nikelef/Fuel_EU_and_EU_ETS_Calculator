@@ -429,7 +429,7 @@ with st.expander("Methodology & Units", expanded=False):
 - **Electricity (OPS):** **kWh → MJ** using **1 kWh = 3.6 MJ** (EU at-berth only)  
 - **WtW intensity:** **[gCO₂e/MJ]**  
 - **FuelEU balance:** **[tCO₂e]**  
-- **EU ETS emissions:** **[tCO₂]** (Tank-to-Wake, fossil portion only)  
+- **EU ETS emissions:** **[tCO₂e]** (Tank-to-Wake; **2025: CO₂ only**, **2026+: CO₂+CH₄+N₂O**)  
 - **All costs:** **EUR**
 
 ---
@@ -567,8 +567,7 @@ Coverage factor:
 
 EU ETS cost:
 """)
-    st.latex(r"\text{ETS\_Cost}=\text{ETS\_Emissions}[tCO_2]\cdot \text{EUA\_Price}\,[€/tCO_2]")
-
+    st.latex(r"\text{ETS\_Cost}=\text{ETS\_Emissions}[tCO_2e]\cdot \text{EUA\_Price}\,[€/tCO_2e]")
     st.markdown("""
 ---
 

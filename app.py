@@ -430,6 +430,7 @@ with st.expander("Methodology & Units", expanded=False):
 - **WtW intensity:** **[gCO₂e/MJ]**  
 - **FuelEU balance:** **[tCO₂e]**  
 - **EU ETS emissions:** **[tCO₂e]** (Tank-to-Wake; **2025: CO₂ only**, **2026+: CO₂+CH₄+N₂O**)  
+- **EU ETS CO₂e method:** **GWP100 (AR5)** is used for CH₄ and N₂O aggregation (**CH₄=28, N₂O=265**).  
 - **All costs:** **EUR**
 
 ---
@@ -567,6 +568,9 @@ Coverage factor:
 
 EU ETS cost:
 """)
+    st.markdown("**EU ETS CO₂e aggregation (from 2026, using GWP100 AR5):**")
+    st.latex(r"\text{tCO}_2e=\text{tCO}_2 + 28\cdot \text{tCH}_4 + 265\cdot \text{tN}_2\text{O}")
+    st.markdown("*(For 2025, the app uses CO₂ only.)*")
     st.latex(r"\text{ETS\_Cost}=\text{ETS\_Emissions}[tCO_2e]\cdot \text{EUA\_Price}\,[€/tCO_2e]")
     st.markdown("""
 ---

@@ -1961,11 +1961,37 @@ with tab_results:
                 st.metric(f"{reduce_fuel} reduced (t)", us2(opt_row["x_reduce_used_t"]))
 
         # Plots
-        st.markdown("### Total cost comparison (2025–2050)")
+        # --- 5-year window selector for chart readability ---
+        periods_5y = [
+            ("2025–2030", 2025, 2030),
+            ("2030–2035", 2030, 2035),
+            ("2035–2040", 2035, 2040),
+            ("2040–2045", 2040, 2045),
+            ("2045–2050", 2045, 2050),
+        ]
+        period_label = st.selectbox(
+            "Total cost chart period (5-year windows)",
+            options=[p[0] for p in periods_5y],
+            index=0,
+            key="total_cost_period_5y",
+        )
+        p_start, p_end = next((s, e) for (lab, s, e) in periods_5y if lab == period_label)
+
+        df_base_plot = df_base[(df_base["Year"] >= p_start) & (df_base["Year"] <= p_end)]
+        df_opt_plot = None if df_opt is None else df_opt[(df_opt["Year"] >= p_start) & (df_opt["Year"] <= p_end)]
+
+        st.markdown(f"### Total cost comparison ({period_label})")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_base["Year"], y=df_base["Total_Cost_EUR"], mode="lines", name="Base"))
-        if df_opt is not None:
-            fig.add_trace(go.Scatter(x=df_opt["Year"], y=df_opt["Total_Cost_EUR"], mode="lines", name="Optimizer", line=dict(dash="dash")))
+        fig.add_trace(go.Scatter(
+            x=df_base_plot["Year"], y=df_base_plot["Total_Cost_EUR"],
+            mode="lines", name="Base"
+        ))
+        if df_opt_plot is not None:
+            fig.add_trace(go.Scatter(
+                x=df_opt_plot["Year"], y=df_opt_plot["Total_Cost_EUR"],
+                mode="lines", name="Optimizer", line=dict(dash="dash")
+            ))
+
         fig.update_layout(
             hovermode="x unified",
             margin=dict(l=40, r=20, t=35, b=35),

@@ -2105,6 +2105,16 @@ with tab_sim:
         deficit = max(-float(base_one["FinalBalance_tCO2e"]), 0.0)
         pooling_cost_component = deficit * float(pooling_price_compare)
         ets_cost_base = float(base_one["ETS_Cost_EUR"])
+        with st.expander("Debug: pooling-only line components", expanded=False):
+            st.write({
+                "Year": y,
+                "FinalBalance_tCO2e (base)": float(base_one["FinalBalance_tCO2e"]),
+                "Deficit used for pooling (tCO2e)": float(deficit),
+                "Pooling price (€/tCO2e)": float(pooling_price_compare),
+                "Pooling cost component (EUR)": float(pooling_cost_component),
+                "ETS base cost (EUR)": float(ets_cost_base),
+                "Dashed line total (EUR)": float(ets_cost_base + pooling_cost_component),
+            })
 
         # Cost curves
         opt_costs = []

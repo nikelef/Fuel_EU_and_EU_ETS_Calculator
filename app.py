@@ -2098,10 +2098,32 @@ with tab_sim:
         y = int(sim_year)
 
         # base with pooling neutral (0 pooling) to compute deficit
+        # --- compute carry-in up to selected year using the SAME policy as Results tab ---
+        carry_base = 0.0
+        state_base = {"fixed_multiplier_by_step": {}, "consec_def": 0}
+        
+        for yy in YEARS:
+            if yy >= y:
+                break
+            m_prev = compute_one_year(yy, segments, FUELS, carry_base, base_cfg, None, premiums_vs_reduce)
+            # advance multiplier state (only matters for dynamic)
+            _ = _penalty_multiplier(yy, bool(m_prev["is_deficit"]), int(m_prev["step_idx"]), state_base, base_cfg)
+            carry_base = float(m_prev["Banking_tCO2e"])
+        
+        # base policy for the selected year (matches the tables' carry-in mechanics)
+        base_one = compute_one_year(y, segments, FUELS, carry_base, base_cfg, None, premiums_vs_reduce)
+        ets_cost_base = float(base_one["ETS_Cost_EUR"])
+        
+        # deficit used for "pooling-only" reference: compute deficit with pooling disabled BUT same carry-in
         tmp_cfg = copy.deepcopy(base_cfg)
         tmp_cfg.pooling_tco2e = 0.0
         tmp_cfg.enable_optimizer = False
-        base_one = compute_one_year(y, segments, FUELS, 0.0, tmp_cfg, None, premiums_vs_reduce)
+        base_no_pool = compute_one_year(y, segments, FUELS, carry_base, tmp_cfg, None, premiums_vs_reduce)
+        
+        deficit = max(-float(base_no_pool["FinalBalance_tCO2e"]), 0.0)
+        pooling_cost_component = deficit * float(pooling_price_compare)
+
+        
         deficit = max(-float(base_one["FinalBalance_tCO2e"]), 0.0)
         pooling_cost_component = deficit * float(pooling_price_compare)
         ets_cost_base = float(base_one["ETS_Cost_EUR"])

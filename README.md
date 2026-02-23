@@ -1,4 +1,4 @@
-# FuelEU Maritime — Voyage Segments + EU ETS (Maritime)
+# FuelEU Maritime — Voyage Segments + EU ETS
 **Streamlit planning tool (2025–2050)** for FuelEU Maritime GHG-intensity compliance modeling, EU ETS (maritime) cost estimation, and **multi-fuel optimization** (fossil replacement with 1–3 alternative fuels).
 
 > **Disclaimer:** This is a planning / decision-support tool. Final compliance must follow the binding legal texts, implementing acts, and your company-approved methodology. Outputs may contain errors. No warranty.

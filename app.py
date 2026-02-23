@@ -1406,7 +1406,7 @@ shared_creds_cookie_gate()
 # =============================================================================
 # Header
 # =============================================================================
-st.title("FuelEU & EU ETS — Voyage Segments - Maritime")
+st.title("FuelEU & EU ETS — Voyage Segments — Maritime")
 st.caption("2025–2050 • WtW intensity • Pooling/Banking • EU ETS maritime (CO₂e from 2026+) • Multi-fuel optimizer & policy comparison")
 show_trial_header(APP_OWNER, APP_CONTACT, APP_VERSION, APP_DATE)
 

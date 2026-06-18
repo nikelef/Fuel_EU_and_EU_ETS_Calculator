@@ -1,0 +1,5 @@
+.streamlit/secrets.toml
+.carbon_optimizer_scenarios.json
+__pycache__/
+*.py[cod]
+streamlit.*.log

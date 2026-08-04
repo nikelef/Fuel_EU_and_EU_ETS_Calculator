@@ -1854,20 +1854,20 @@ with tab_cockpit:
     else:
         sort_col = "Total_NPV_EUR" if objective == "Total cost including fuel" else "Compliance_NPV_EUR"
         best = comparison_df.iloc[0]
-        baseline = comparison_df.loc[comparison_df["Strategy"] == "Pay as-is"].iloc[0]
         selected_strategy = st.selectbox(
             "Strategy detail",
             comparison_df["Strategy"].tolist(),
             index=0,
         )
+        selected_row = comparison_df.loc[comparison_df["Strategy"] == selected_strategy].iloc[0]
         selected_detail = detail_df[detail_df["Strategy"] == selected_strategy].copy()
 
         k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("Recommended strategy", str(best["Strategy"])[:34])
-        k2.metric("Optimized NPV", money(float(best[sort_col])))
-        k3.metric("Savings vs pay as-is", money(float(best["Savings_vs_Pay_As_Is_EUR"])))
-        k4.metric("Residual FuelEU deficit", f"{number(float(best['Final_Deficit_tCO2e']), 0)} tCO2e")
-        k5.metric("Pool bought", f"{number(float(best['Pool_Bought_tCO2e']), 0)} tCO2e")
+        k1.metric("Selected strategy", str(selected_row["Strategy"])[:34])
+        k2.metric("Selected strategy NPV", money(float(selected_row[sort_col])))
+        k3.metric("Savings vs pay as-is", money(float(selected_row["Savings_vs_Pay_As_Is_EUR"])))
+        k4.metric("Residual FuelEU deficit", f"{number(float(selected_row['Final_Deficit_tCO2e']), 0)} tCO2e")
+        k5.metric("Pool bought", f"{number(float(selected_row['Pool_Bought_tCO2e']), 0)} tCO2e")
 
         if float(best["Savings_vs_Pay_As_Is_EUR"]) > 0:
             st.markdown(
@@ -1948,7 +1948,6 @@ with tab_pooling:
     if detail_df.empty:
         st.info("Run a strategy first.")
     else:
-        selected_strategy = comparison_df.iloc[0]["Strategy"]
         pool_detail = detail_df[detail_df["Strategy"] == selected_strategy].copy()
         year_choice = st.selectbox("Pooling year", list(range(int(start_year), int(end_year) + 1)), index=0)
         row = pool_detail[pool_detail["Year"] == year_choice].iloc[0]
@@ -1962,7 +1961,7 @@ with tab_pooling:
         fig.add_trace(go.Bar(x=pool_detail["Year"], y=pool_detail["FuelEU_Balance_raw_tCO2e"], name="Raw FuelEU balance", marker_color="#0f766e"))
         fig.add_trace(go.Bar(x=pool_detail["Year"], y=pool_detail["Pool_Bought_tCO2e"], name="Pool bought", marker_color="#2563eb"))
         fig.add_trace(go.Bar(x=pool_detail["Year"], y=-pool_detail["FuelEU_Deficit_after_pool_tCO2e"], name="Residual deficit", marker_color="#b91c1c"))
-        fig.update_layout(title=f"Yearly Pooling Need Under Recommended Strategy: {selected_strategy}", barmode="relative", yaxis_title="tCO2e")
+        fig.update_layout(title=f"Yearly Pooling Need Under Selected Strategy: {selected_strategy}", barmode="relative", yaxis_title="tCO2e")
         fig.update_xaxes(type="category")
         st.plotly_chart(style_fig(fig, 430), use_container_width=True)
 

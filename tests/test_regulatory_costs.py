@@ -1,6 +1,7 @@
 import unittest
 
 from regulatory_costs import (
+    ets_emissions_factor_tco2e_per_t,
     fueleu_penalty_eur,
     fueleu_signed_cost_eur,
     portfolio_segment_cost_values,
@@ -45,6 +46,47 @@ class FuelEUSignedCostTests(unittest.TestCase):
             costs["ets_cost_eur"] + costs["fueleu_cost_eur"],
         )
         self.assertLess(costs["total_regulatory_cost_eur"], costs["ets_cost_eur"])
+
+
+class ETSCertifiedZeroRatingTests(unittest.TestCase):
+    def test_checked_fuel_has_zero_ets_factor(self) -> None:
+        factor = ets_emissions_factor_tco2e_per_t(
+            co2_t_t=3.114,
+            ch4_t_t=0.001,
+            n2o_t_t=0.002,
+            gwp_ch4=28.0,
+            gwp_n2o=265.0,
+            include_nonco2=True,
+            ets_zero_if_certified=True,
+        )
+
+        self.assertEqual(factor, 0.0)
+
+    def test_unchecked_fuel_uses_all_ets_factors_from_2026(self) -> None:
+        factor = ets_emissions_factor_tco2e_per_t(
+            co2_t_t=3.114,
+            ch4_t_t=0.001,
+            n2o_t_t=0.002,
+            gwp_ch4=28.0,
+            gwp_n2o=265.0,
+            include_nonco2=True,
+            ets_zero_if_certified=False,
+        )
+
+        self.assertAlmostEqual(factor, 3.114 + (0.001 * 28.0) + (0.002 * 265.0))
+
+    def test_unchecked_fuel_uses_only_co2_before_2026(self) -> None:
+        factor = ets_emissions_factor_tco2e_per_t(
+            co2_t_t=3.114,
+            ch4_t_t=0.001,
+            n2o_t_t=0.002,
+            gwp_ch4=28.0,
+            gwp_n2o=265.0,
+            include_nonco2=False,
+            ets_zero_if_certified=False,
+        )
+
+        self.assertEqual(factor, 3.114)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,7 @@ Implemented in the cost engine:
 - EU ETS gases:
   - CO2 only for 2025 in this app;
   - CO2 + CH4 + N2O from 2026 onward, using editable GWP100 assumptions.
+  - the `ETS zero if certified` fuel checkbox zero-rates that fuel's ETS CO2e factor when valid certification evidence applies.
 - OPS as an operational fuel-replacement strategy for berth energy.
 - HSFO economics as a normal fuel option in the editable fuel library.
 - Fuel prices by fuel type. Fuel cost is calculated from annual tonnes consumed, editable `Price_EUR_t`, and the annual fuel price escalation assumption.

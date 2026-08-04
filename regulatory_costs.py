@@ -1,6 +1,23 @@
 VLSFO_REFERENCE_LCV_MJ_T = 41_000.0
 
 
+def ets_emissions_factor_tco2e_per_t(
+    co2_t_t: float,
+    ch4_t_t: float,
+    n2o_t_t: float,
+    gwp_ch4: float,
+    gwp_n2o: float,
+    include_nonco2: bool,
+    ets_zero_if_certified: bool,
+) -> float:
+    """Return the ETS CO2e factor, applying certified zero-rating when selected."""
+    if ets_zero_if_certified:
+        return 0.0
+    ch4_co2e = ch4_t_t * gwp_ch4 if include_nonco2 else 0.0
+    n2o_co2e = n2o_t_t * gwp_n2o if include_nonco2 else 0.0
+    return co2_t_t + ch4_co2e + n2o_co2e
+
+
 def fueleu_penalty_eur(
     deficit_tco2e: float,
     attained_g: float,

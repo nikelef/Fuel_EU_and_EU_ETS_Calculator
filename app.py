@@ -13,7 +13,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from regulatory_costs import fueleu_penalty_eur, portfolio_segment_cost_values
+from regulatory_costs import (
+    ets_emissions_factor_tco2e_per_t,
+    fueleu_penalty_eur,
+    portfolio_segment_cost_values,
+)
 
 
 # =============================================================================
@@ -758,10 +762,16 @@ def calculate_year_profile(
     include_nonco2 = int(year) >= 2026
     ets_raw = 0.0
     for code in codes:
-        co2 = float(fuels[code]["ETS_CO2_t_t"])
-        ch4 = float(fuels[code]["ETS_CH4_t_t"]) * float(assumptions["gwp_ch4"]) if include_nonco2 else 0.0
-        n2o = float(fuels[code]["ETS_N2O_t_t"]) * float(assumptions["gwp_n2o"]) if include_nonco2 else 0.0
-        ets_raw += ets_mass_scope[code] * (co2 + ch4 + n2o)
+        ets_factor = ets_emissions_factor_tco2e_per_t(
+            float(fuels[code]["ETS_CO2_t_t"]),
+            float(fuels[code]["ETS_CH4_t_t"]),
+            float(fuels[code]["ETS_N2O_t_t"]),
+            float(assumptions["gwp_ch4"]),
+            float(assumptions["gwp_n2o"]),
+            include_nonco2,
+            bool(fuels[code].get("ETS_zero_if_certified", False)),
+        )
+        ets_raw += ets_mass_scope[code] * ets_factor
     ets_covered = ets_raw * ets_surrender_factor(year)
 
     price_multiplier = (1.0 + float(assumptions["fuel_escalation"])) ** max(0, year - int(assumptions["start_year"]))
@@ -1597,7 +1607,10 @@ with tab_portfolio:
             "Price_EUR_t": st.column_config.NumberColumn("Price [€/t]", min_value=0.0, step=10.0),
             "Supply_cap_t": st.column_config.NumberColumn("Supply cap [t/year]", min_value=0.0, step=100.0),
             "RFNBO": st.column_config.CheckboxColumn("RFNBO"),
-            "ETS_zero_if_certified": st.column_config.CheckboxColumn("ETS zero if certified"),
+            "ETS_zero_if_certified": st.column_config.CheckboxColumn(
+                "ETS zero if certified",
+                help="When checked, this fuel's ETS CO2e factor is treated as zero. Use only with valid sustainability certification and evidence.",
+            ),
         },
         key=f"fuel_editor_plain_hsfo_{st.session_state.get('_fuel_editor_revision', 0)}",
     )

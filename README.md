@@ -20,6 +20,7 @@ Subscription-ready Streamlit app for minimizing a shipowner's combined **FuelEU 
 - Added sidebar help tooltips for the economic and optimizer inputs.
 - Exposed fuel prices in the sidebar; these prices feed the `Total cost including fuel` objective.
 - Added Portfolio-tab current FuelEU/EU ETS cost graphics by segment across the selected period.
+- Portfolio segment results retain the FuelEU compliance sign: deficits/costs are positive, while surpluses and their penalty-equivalent benefit are negative and reduce net regulatory cost.
 - Added Portfolio-tab total yearly cost chart with regulatory cost, fuel cost, pooling cost, and total cost.
 - Added Portfolio-tab GFI line chart showing attained GFI against the FuelEU limit across the selected period.
 - Set the default selected period to 2025-2030; all charts/tables use that period except the GFI chart, which remains fixed at 2025-2050.

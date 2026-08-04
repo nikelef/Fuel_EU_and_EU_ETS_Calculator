@@ -13,6 +13,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from regulatory_costs import fueleu_penalty_eur, portfolio_segment_cost_values
+
 
 # =============================================================================
 # Product and regulatory baseline
@@ -22,7 +24,6 @@ APP_VERSION = "4.0"
 APP_OWNER = "Nikitas Eleftheriou"
 REGULATORY_CHECK_DATE = "2026-05-21"
 REFERENCE_INTENSITY_GCO2E_MJ = 91.16
-VLSFO_REFERENCE_LCV_MJ_T = 41_000.0
 APP_DIR = Path(__file__).resolve().parent
 SCENARIO_PATH = APP_DIR / ".carbon_optimizer_scenarios.json"
 
@@ -806,20 +807,20 @@ def current_segment_costs(
     for idx, segment in segments.iterrows():
         single = pd.DataFrame([segment])
         profile = calculate_year_profile(single, fuels_df, year, assumptions)
-        deficit = max(-float(profile["FuelEU_Balance_tCO2e"]), 0.0)
-        fueleu_cost = fueleu_penalty_eur(
-            deficit,
+        costs = portfolio_segment_cost_values(
+            float(profile["FuelEU_Balance_tCO2e"]),
             float(profile["Attained_gCO2e_MJ"]),
             float(assumptions["fueleu_penalty_vlsfo"]),
+            float(profile["ETS_Covered_tCO2e"]),
+            eua_price,
         )
-        ets_cost = float(profile["ETS_Covered_tCO2e"]) * eua_price
         rows.append(
             {
                 "Segment": str(segment.get("Segment", f"Segment {idx + 1}")),
-                "FuelEU Cost EUR": fueleu_cost,
-                "EU ETS Cost EUR": ets_cost,
-                "Total Regulatory Cost EUR": fueleu_cost + ets_cost,
-                "FuelEU Deficit tCO2e": deficit,
+                "FuelEU Cost EUR": costs["fueleu_cost_eur"],
+                "EU ETS Cost EUR": costs["ets_cost_eur"],
+                "Total Regulatory Cost EUR": costs["total_regulatory_cost_eur"],
+                "FuelEU Deficit tCO2e": costs["signed_deficit_tco2e"],
                 "ETS Covered tCO2e": float(profile["ETS_Covered_tCO2e"]),
                 "Attained gCO2e/MJ": float(profile["Attained_gCO2e_MJ"]),
                 "FuelEU Limit gCO2e/MJ": float(profile["Target_gCO2e_MJ"]),
@@ -932,15 +933,6 @@ def apply_ops_program(
             added_mwh += energy_removed_annual / 3_600.0
             work.at[idx, "OPS_MWh_trip"] = float(work.at[idx, "OPS_MWh_trip"]) + (energy_removed_annual / 3_600.0) / trips
     return work, added_mwh
-
-
-def fueleu_penalty_eur(deficit_tco2e: float, attained_g: float, penalty_eur_vlsfo_t: float) -> float:
-    if deficit_tco2e <= 0 or attained_g <= 0 or penalty_eur_vlsfo_t <= 0:
-        return 0.0
-    tco2e_per_vlsfo_t = attained_g * VLSFO_REFERENCE_LCV_MJ_T / 1_000_000.0
-    if tco2e_per_vlsfo_t <= 0:
-        return 0.0
-    return (deficit_tco2e / tco2e_per_vlsfo_t) * penalty_eur_vlsfo_t
 
 
 def simulate_strategy(
@@ -1689,9 +1681,13 @@ with tab_portfolio:
             ["FuelEU Cost EUR", "EU ETS Cost EUR", "Total Regulatory Cost EUR", "FuelEU Deficit tCO2e", "ETS Covered tCO2e"]
         ].sum()
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Period FuelEU cost", money(float(total_summary["FuelEU Cost EUR"])))
+        m1.metric("Period FuelEU net cost", money(float(total_summary["FuelEU Cost EUR"])))
         m2.metric("Period EU ETS cost", money(float(total_summary["EU ETS Cost EUR"])))
-        m3.metric("Period regulatory total", money(float(total_summary["Total Regulatory Cost EUR"])))
+        m3.metric("Period net regulatory total", money(float(total_summary["Total Regulatory Cost EUR"])))
+        st.caption(
+            "Negative FuelEU deficit and cost values denote a compliance surplus and its "
+            "penalty-equivalent benefit; they reduce the net total regulatory cost."
+        )
         m4.metric("Period ETS covered emissions", f"{number(float(total_summary['ETS Covered tCO2e']), 0)} tCO2e")
 
         cost_plot_df = segment_cost_df.loc[segment_cost_df["Segment"] != "TOTAL"].melt(

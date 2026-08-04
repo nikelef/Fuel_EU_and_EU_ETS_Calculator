@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import math
 from copy import deepcopy
@@ -13,11 +14,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from regulatory_costs import (
-    ets_emissions_factor_tco2e_per_t,
-    fueleu_penalty_eur,
-    portfolio_segment_cost_values,
-)
+import regulatory_costs as _regulatory_costs
+
+
+# Streamlit Cloud can rerun app.py while retaining an older imported helper module.
+# Reload it before binding helpers so newly deployed functions are immediately visible.
+_regulatory_costs = importlib.reload(_regulatory_costs)
+ets_emissions_factor_tco2e_per_t = _regulatory_costs.ets_emissions_factor_tco2e_per_t
+fueleu_penalty_eur = _regulatory_costs.fueleu_penalty_eur
+portfolio_segment_cost_values = _regulatory_costs.portfolio_segment_cost_values
 
 
 # =============================================================================
